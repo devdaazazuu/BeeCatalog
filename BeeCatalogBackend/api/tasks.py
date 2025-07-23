@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 from pydantic.v1 import BaseModel
 import pandas as pd
 from . import utils
+from collections import defaultdict 
 
 
 logger = get_task_logger(__name__)
@@ -31,62 +32,111 @@ def scrape_images_task(self, url):
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         raise
 
+# *** INÍCIO DA REFATORAÇÃO: Recebe product_data completo ***
 @shared_task
-def generate_main_content_task(titulo_produto):
+def generate_main_content_task(product_index, product_data):
     try:
         start_time = time.time()
-        print(f"INFO: [Sub-tarefa] Iniciando geração de conteúdo principal para '{titulo_produto[:30]}...'")
+        titulo_produto = product_data.get('titulo', f'Produto {product_index}')
+        print(f"INFO: [Sub-tarefa] Iniciando geração de conteúdo principal para produto {product_index} ('{titulo_produto[:30]}...')")
+        
+        # Formata o contexto completo do produto
+        product_context = utils.format_product_context(product_data)
+        
         main_ia_chain = utils.get_main_ia_chain()
-        parsed_content = main_ia_chain.invoke({"product_name": titulo_produto})
+        # Invoca a IA com o contexto completo
+        parsed_content = main_ia_chain.invoke({"product_context": product_context})
+        
         end_time = time.time()
-        print(f"--- [PROFILE][Sub-tarefa: Conteúdo Principal] Execução levou: {end_time - start_time:.2f}s")
+        print(f"--- [PROFILE][Sub-tarefa: Conteúdo Principal] Produto {product_index} levou: {end_time - start_time:.2f}s")
         data_to_return = parsed_content.dict() if isinstance(parsed_content, BaseModel) else parsed_content
-        return {'type': 'main_content', 'data': data_to_return}
+        return {'type': 'main_content', 'product_index': product_index, 'data': data_to_return}
     except Exception as e:
-        print(f"ERRO na sub-tarefa de conteúdo principal: {e}")
+        print(f"ERRO na sub-tarefa de conteúdo principal para produto {product_index}: {e}")
         traceback.print_exc()
-        return {'type': 'main_content', 'data': {}}
+        return {'type': 'main_content', 'product_index': product_index, 'data': {}}
+# *** FIM DA REFATORAÇÃO ***
 
+# *** INÍCIO DA REFATORAÇÃO: Recebe product_data completo ***
 @shared_task
-def choose_options_task(titulo_produto, fields_for_ai_batch):
+def choose_options_task(product_index, product_data, temp_file_path):
+    wb = None
     try:
         start_time = time.time()
-        print(f"INFO: [Sub-tarefa] Iniciando escolha de opções para '{titulo_produto[:30]}...'")
+        titulo_produto = product_data.get('titulo', f'Produto {product_index}')
+        print(f"INFO: [Sub-tarefa] Iniciando escolha de opções para produto {product_index} ('{titulo_produto[:30]}...')")
+        
+        wb = load_workbook(filename=temp_file_path, keep_vba=True)
+        ws = wb["Modelo"]
+        field_options = utils.coletar_opcoes_campo(wb, "Modelo", 7)
+        multi_value_fields = utils.identificar_campos_multi_valor(ws)
+        fields_for_ai_batch = [
+            {"field_name": name, "options": opts, "multi_value": name in multi_value_fields, "is_critical": name in utils.campos_criticos}
+            for name, campo_obj in field_options.items()
+            if (opts := [o for o in campo_obj['options'] if o and o.lower() != 'nan'])
+        ]
+
         if not fields_for_ai_batch:
-            print("INFO: [Sub-tarefa] Nenhum campo de seleção para preencher. Pulando.")
-            return {'type': 'options', 'data': {}}
+            print(f"INFO: [Sub-tarefa] Nenhum campo de seleção para preencher para o produto {product_index}. Pulando.")
+            return {'type': 'options', 'product_index': product_index, 'data': {}}
+            
         vectorstore = utils.get_vectorstore()
         retriever = vectorstore.as_retriever()
-        ai_choices, _ = utils.escolher_com_ia(titulo_produto, fields_for_ai_batch, frozenset(), retriever)
+        # Passa o product_data completo para a função da IA
+        ai_choices, _ = utils.escolher_com_ia(product_data, fields_for_ai_batch, frozenset(), retriever)
         end_time = time.time()
-        print(f"--- [PROFILE][Sub-tarefa: Escolher Opções] Execução levou: {end_time - start_time:.2f}s")
-        return {'type': 'options', 'data': ai_choices}
+        print(f"--- [PROFILE][Sub-tarefa: Escolher Opções] Produto {product_index} levou: {end_time - start_time:.2f}s")
+        return {'type': 'options', 'product_index': product_index, 'data': ai_choices}
     except Exception as e:
-        print(f"ERRO na sub-tarefa de escolher opções: {e}")
+        print(f"ERRO na sub-tarefa de escolher opções para produto {product_index}: {e}")
         traceback.print_exc()
-        return {'type': 'options', 'data': {}}
+        return {'type': 'options', 'product_index': product_index, 'data': {}}
+    finally:
+        if wb:
+            wb.close()
+# *** FIM DA REFATORAÇÃO ***
 
+# *** INÍCIO DA REFATORAÇÃO: Recebe product_data completo ***
 @shared_task
-def process_chunk_task(chunk_name, chunk_data, titulo_produto, context_str, campos_criticos_list, persona):
+def process_chunk_task(product_index, chunk_name, product_data, temp_file_path, campos_criticos_list, persona):
+    wb = None
     try:
         start_time = time.time()
-        print(f"INFO: [Sub-tarefa] Iniciando processamento do chunk '{chunk_name}' para '{titulo_produto[:30]}...'")
+        print(f"INFO: [Sub-tarefa] Iniciando processamento do chunk '{chunk_name}' para produto {product_index}...")
+        
+        wb = load_workbook(filename=temp_file_path, keep_vba=True)
+        ws = wb["Modelo"]
+        chunks = utils.mapear_chunks_da_planilha(ws)
+        chunk_data = chunks[chunk_name].to_dict()
+        
+        vectorstore = utils.get_vectorstore()
+        retriever = vectorstore.as_retriever()
+        
+        titulo_produto = product_data.get('titulo', f'Produto {product_index}')
+        context_str = "\n".join([doc.page_content for doc in retriever.get_relevant_documents(f"Informações para {titulo_produto}")])
+
+        # Passa o product_data completo para a função da IA
         ai_choices = utils.processar_chunk_com_ia(
-            chunk_name, chunk_data, titulo_produto, context_str, set(campos_criticos_list), persona
+            chunk_name, chunk_data, product_data, context_str, set(campos_criticos_list), persona
         )
         end_time = time.time()
-        print(f"--- [PROFILE][Sub-tarefa: Chunk '{chunk_name}'] Execução levou: {end_time - start_time:.2f}s")
-        return {'type': 'chunk', 'chunk_name': chunk_name, 'data': ai_choices}
+        print(f"--- [PROFILE][Sub-tarefa: Chunk '{chunk_name}'] Produto {product_index} levou: {end_time - start_time:.2f}s")
+        return {'type': 'chunk', 'product_index': product_index, 'chunk_name': chunk_name, 'data': ai_choices}
     except Exception as e:
-        print(f"ERRO na sub-tarefa de chunk '{chunk_name}': {e}")
+        print(f"ERRO na sub-tarefa de chunk '{chunk_name}' para produto {product_index}: {e}")
         traceback.print_exc()
-        return {'type': 'chunk', 'chunk_name': chunk_name, 'data': {}}
+        return {'type': 'chunk', 'product_index': product_index, 'chunk_name': chunk_name, 'data': {}}
+    finally:
+        if wb:
+            wb.close()
+# *** FIM DA REFATORAÇÃO ***
 
 @shared_task(bind=True)
-def assemble_spreadsheet_task(self, results_list, product, image_urls, temp_file_path):
+def assemble_spreadsheet_task(self, results_list, products_data, image_urls_map, temp_file_path):
+    wb = None
     try:
-        print(f"INFO: [Finalizador] Iniciando montagem final para o produto SKU {product.get('sku')}")
         self.update_state(state='PROGRESS', meta={'step': 'Montando planilha final...'})
+        print(f"INFO: [Finalizador] Iniciando montagem final para {len(products_data)} produtos.")
 
         wb = load_workbook(filename=temp_file_path, keep_vba=True)
         ws = wb["Modelo"]
@@ -94,70 +144,57 @@ def assemble_spreadsheet_task(self, results_list, product, image_urls, temp_file
         cabecalho4 = {str(cell.value).strip(): cell.column for cell in ws[4] if cell.value}
         cabecalho5 = {str(cell.value).strip(): cell.column for cell in ws[5] if cell.value}
         
-        row = 7
-
-        field_options = utils.coletar_opcoes_campo(wb, "Modelo", row)
-        chunks = utils.mapear_chunks_da_planilha(ws)
-        
-        updated_product = product.copy()
-
+        organized_results = defaultdict(lambda: defaultdict(dict))
         for result in results_list:
-            if not result or not result.get('data'): continue
-            
-            if result['type'] == 'main_content':
-                parsed_content = result['data']
-                ai_optimized_title = parsed_content.get("titulo")
+            if not result: continue
+            idx = result.get('product_index')
+            res_type = result.get('type')
+            if res_type == 'chunk':
+                organized_results[idx]['chunks'][result.get('chunk_name')] = result.get('data', {})
+            elif res_type:
+                organized_results[idx][res_type] = result.get('data', {})
 
-                if ai_optimized_title:
-                    updated_product['titulo'] = ai_optimized_title
+        for i, product in enumerate(products_data):
+            row = 7 + i
+            print(f"INFO: [Finalizador] Preenchendo linha {row} para SKU {product.get('sku')}")
+            
+            product_results = organized_results[i]
+            updated_product = product.copy()
+            image_urls = image_urls_map.get(str(i), {})
+
+            main_content = product_results.get('main_content', {})
+            if main_content:
+                updated_product['titulo'] = main_content.get("titulo", updated_product['titulo'])
+                utils.set_cell_value(ws, row, cabecalho4, "Nome do item", main_content.get("titulo"))
+                utils.set_cell_value(ws, row, cabecalho4, "Descrição do Produto", main_content.get("descricao_produto"))
                 
-                utils.set_cell_value(ws, row, cabecalho4, "Nome do item", ai_optimized_title)
-                utils.set_cell_value(ws, row, cabecalho4, "Descrição do Produto", parsed_content.get("descricao_produto"))
-                
-                bullet_points = parsed_content.get("bullet_points", [])
+                bullet_points = main_content.get("bullet_points", [])
                 for idx, bp_data in enumerate(bullet_points):
                     if idx < 5:
-                        bp_text = bp_data.get("bullet_point", "")
-                        utils.set_cell_value(ws, row, cabecalho5, f"bullet_point{idx+1}", bp_text)
+                        utils.set_cell_value(ws, row, cabecalho5, f"bullet_point{idx+1}", bp_data.get("bullet_point", ""))
+                
+                utils.set_cell_value(ws, row, cabecalho5, "generic_keyword1", main_content.get("palavras_chave", ""))
 
-                palavras_chave_str = parsed_content.get("palavras_chave", "")
-                utils.set_cell_value(ws, row, cabecalho5, "generic_keyword1", palavras_chave_str)
-            
-            elif result['type'] == 'options':
-                for field, choice in result['data'].items():
+            options_content = product_results.get('options', {})
+            if options_content:
+                field_options = utils.coletar_opcoes_campo(wb, "Modelo", row)
+                for field, choice in options_content.items():
                     if field in field_options:
                         utils.preencher_grupo_de_colunas(ws, row, field_options[field]['col_indices'], choice if isinstance(choice, list) else [choice], field)
-            
-            elif result['type'] == 'chunk':
-                for campo in chunks[result['chunk_name']].campos:
-                    field_name = campo['cabecalho_l5']
-                    if field_name in result['data'] and not ws.cell(row=row, column=campo["col"]).value:
-                        valor = result['data'][field_name]
-                        if valor and str(valor).strip().lower() != 'nan':
-                            ws.cell(row=row, column=campo["col"], value=str(valor))
 
-        utils.preencher_dados_fixos(ws, row, updated_product, image_urls, cabecalho4, cabecalho5)
+            chunks_content = product_results.get('chunks', {})
+            if chunks_content:
+                chunks_map = utils.mapear_chunks_da_planilha(ws)
+                for chunk_name, chunk_data in chunks_content.items():
+                    if chunk_name in chunks_map:
+                        for campo in chunks_map[chunk_name].campos:
+                            field_name = campo['cabecalho_l5']
+                            if field_name in chunk_data and not ws.cell(row=row, column=campo["col"]).value:
+                                valor = chunk_data[field_name]
+                                if valor and str(valor).strip().lower() != 'nan':
+                                    ws.cell(row=row, column=campo["col"], value=str(valor))
 
-        variations = product.get("variacoes", [])
-        if variations:
-            utils.set_cell_value(ws, row, cabecalho4, "Nível de hierarquia", "Produto Pai")
-            utils.set_cell_value(ws, row, cabecalho4, "Tipo de relação com o secundário", "Variação")
-            utils.set_cell_value(ws, row, cabecalho4, "Nome do tema de variação", product.get("tema_variacao_pai"))
-
-        for var_idx, var in enumerate(variations):
-            linha_variacao = row + var_idx + 1
-            for col_idx in range(1, ws.max_column + 1):
-                if not ws.cell(row=linha_variacao, column=col_idx).value:
-                    ws.cell(row=linha_variacao, column=col_idx, value=ws.cell(row=row, column=col_idx).value)
-            
-            utils.set_cell_value(ws, linha_variacao, cabecalho4, "SKU", var.get('sku'))
-            utils.set_cell_value(ws, linha_variacao, cabecalho4, "Nível de hierarquia", "Produto Filho")
-            utils.set_cell_value(ws, linha_variacao, cabecalho4, "SKU do produto pai", product.get("sku"))
-            
-            tema_variacao_valor = var.get('cor') if var.get('tipo') == 'cor' else f"{var.get('cla')}cm / {var.get('peso')}g"
-            utils.set_cell_value(ws, linha_variacao, cabecalho4, "Nome do tema de variação", tema_variacao_valor)
-            if var.get('imagem'):
-                utils.set_cell_value(ws, linha_variacao, cabecalho4, "URL da imagem principal", var.get('imagem'))
+            utils.preencher_dados_fixos(ws, row, updated_product, image_urls, cabecalho4, cabecalho5)
 
         print("INFO: [Finalizador] Montagem final concluída. Salvando arquivo...")
         buf = io.BytesIO()
@@ -172,69 +209,58 @@ def assemble_spreadsheet_task(self, results_list, product, image_urls, temp_file
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         raise
     finally:
+        if wb:
+            wb.close()
         if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
 @shared_task(bind=True)
 def generate_spreadsheet_task(self, products_data, image_urls_map, template_path):
+    wb = None
     try:
         if not products_data:
             raise ValueError("Nenhum dado de produto fornecido.")
-        product = products_data[0]
-        image_urls = image_urls_map.get('0', {})
-        
+
         self.update_state(state='PROGRESS', meta={'step': 'Preparando ambiente para tarefas...'})
 
-        # Carrega o workbook diretamente do caminho do arquivo temporário
-        try:
-            wb = load_workbook(filename=template_path, keep_vba=True)
-            ws = wb["Modelo"]
-        except Exception as e:
-            logger.error(f"Erro ao carregar o template da Amazon do caminho {template_path}: {e}")
-            self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
-            raise
-        
-        # Cria um *outro* arquivo temporário para passar para a task de montagem
         temp_dir = os.path.join(settings.BASE_DIR, "temp_files")
         os.makedirs(temp_dir, exist_ok=True)
         assemble_temp_path = os.path.join(temp_dir, f"{self.request.id}_assemble.xlsm")
-        wb.save(assemble_temp_path)
+        
+        with open(template_path, 'rb') as src, open(assemble_temp_path, 'wb') as dst:
+            dst.write(src.read())
 
         header_tasks = []
-        titulo_produto = product.get("titulo", "")
         
-        header_tasks.append(generate_main_content_task.s(titulo_produto))
+        wb = load_workbook(filename=template_path, keep_vba=True)
+        chunks = utils.mapear_chunks_da_planilha(wb["Modelo"])
+        wb.close()
+        wb = None
 
-        field_options = utils.coletar_opcoes_campo(wb, "Modelo", 7)
-        multi_value_fields = utils.identificar_campos_multi_valor(ws)
-        fields_for_ai_batch = [
-            {"field_name": name, "options": opts, "multi_value": name in multi_value_fields, "is_critical": name in utils.campos_criticos}
-            for name, campo_obj in field_options.items()
-            if (opts := [o for o in campo_obj['options'] if o and o.lower() != 'nan'])
-        ]
-        header_tasks.append(choose_options_task.s(titulo_produto, fields_for_ai_batch))
+        # *** INÍCIO DA REFATORAÇÃO: Passa o product_data completo para as sub-tarefas ***
+        for i, product in enumerate(products_data):
+            # Passa o dicionário 'product' inteiro
+            header_tasks.append(generate_main_content_task.s(i, product))
+            header_tasks.append(choose_options_task.s(i, product, assemble_temp_path))
 
-        chunks = utils.mapear_chunks_da_planilha(ws)
-        vectorstore = utils.get_vectorstore()
-        retriever = vectorstore.as_retriever()
-        context_str = "\n".join([doc.page_content for doc in retriever.get_relevant_documents(f"Informações para {titulo_produto}")])
-        chunk_personas = {
-            "Oferta (BR) - (Vender na Amazon)": "Especialista em dados de OFERTA...",
-            "Detalhes do produto": "Especialista em especificações TÉCNICAS...",
-            "Segurança e Conformidade": "Especialista em CONFORMIDADE e segurança..."
-        }
-        for name, persona in chunk_personas.items():
-            if name in chunks:
-                header_tasks.append(
-                    process_chunk_task.s(name, chunks[name].to_dict(), titulo_produto, context_str, list(utils.campos_criticos), persona)
-                )
+            chunk_personas = {
+                "Oferta (BR) - (Vender na Amazon)": "Especialista em dados de OFERTA...",
+                "Detalhes do produto": "Especialista em especificações TÉCNICAS...",
+                "Segurança e Conformidade": "Especialista em CONFORMIDADE e segurança..."
+            }
+            for name, persona in chunk_personas.items():
+                if name in chunks:
+                    header_tasks.append(
+                        process_chunk_task.s(i, name, product, assemble_temp_path, list(utils.campos_criticos), persona)
+                    )
+        # *** FIM DA REFATORAÇÃO ***
 
-        print(f"INFO: [Maestra] Criando chord para o produto SKU {product.get('sku')}")
+        print(f"INFO: [Maestra] Criando chord para {len(products_data)} produtos.")
         
         body_task = assemble_spreadsheet_task.s(
-            product=product, 
-            image_urls=image_urls, 
-            temp_file_path=assemble_temp_path
+            products_data, 
+            image_urls_map, 
+            assemble_temp_path
         )
 
         the_chord = chord(header_tasks, body_task)
@@ -247,7 +273,8 @@ def generate_spreadsheet_task(self, products_data, image_urls_map, template_path
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
         raise
     finally:
-        # Garante que o arquivo de template de ENTRADA seja sempre deletado
+        if wb:
+            wb.close()
         if 'template_path' in locals() and os.path.exists(template_path):
             os.remove(template_path)
 
@@ -272,10 +299,12 @@ def organizador_ia_task(self, csv_content_base64):
     for i, product_info in enumerate(products_to_process):
         self.update_state(state='PROGRESS', meta={'step': 'Gerando conteúdo', 'current': i + 1, 'total': total_products})
         
-        product_name_str = ", ".join([f"{key}: {value}" for key, value in product_info.items() if pd.notna(value)])
+        # *** INÍCIO DA REFATORAÇÃO: Usa a nova função para formatar o contexto ***
+        product_context = utils.format_product_context(product_info)
         
         try:
-            ia_output = ia_chain.invoke({"product_name": product_name_str})
+            # Passa o contexto formatado para a IA
+            ia_output = ia_chain.invoke({"product_context": product_context})
             
             new_product_data = {**product_info, **ia_output}
             
@@ -287,6 +316,7 @@ def organizador_ia_task(self, csv_content_base64):
         except Exception as e:
             logger.error(f"Erro na IA para o produto na linha {i+2}: {e}")
             continue
+        # *** FIM DA REFATORAÇÃO ***
         
         time.sleep(1.5)
 

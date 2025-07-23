@@ -78,7 +78,7 @@ FAISS_INDEX_NAME = "amazon_base"
 
 MAPA_CAMPOS = [
     ("sku", "SKU"),
-    ("tipo_marca", "Nome da marca"), # Atenção: Duplicado em cabecalho4 para Marca
+    ("tipo_marca", "Nome da marca"), 
     ("nome_marca", "Nome da marca"),
     ("preco", "Preço padrão BRL"),
     ("quantidade", "Quantidade (BR)"),
@@ -87,9 +87,9 @@ MAPA_CAMPOS = [
     ("ncm", "Código NCM"),
     ("tipo_id_produto", "Tipo de ID do produto"),
     ("peso_pacote", "Peso do pacote"),
-    ("peso_pacote", "Peso do Pacote Principal"), # Atenção: Duplicado
+    ("peso_pacote", "Peso do Pacote Principal"), 
     ("peso_produto", "Peso da tela do item"),
-    ("peso_produto", "Peso do item"), # Atenção: Duplicado
+    ("peso_produto", "Peso do item"), 
     ("ajuste", "Tipo de ajuste"),
 ]
 
@@ -138,60 +138,68 @@ HEADERS = {
     )
 }
 
+def format_product_context(product: dict) -> str:
+    """Formata os dados do produto em uma string legível para a IA."""
+    context_parts = []
+    readable_keys = {
+        "titulo": "Título do Produto", "sku": "SKU", "tipo_marca": "Tipo de Marca",
+        "nome_marca": "Nome da Marca", "preco": "Preço", "fba_dba": "Logística (FBA ou DBA)",
+        "id_produto": "ID do Produto (EAN/GTIN/UPC)", "tipo_id_produto": "Tipo de ID do Produto",
+        "ncm": "NCM", "quantidade": "Quantidade em Estoque", "peso_pacote": "Peso do Pacote (g)",
+        "c_l_a_pacote": "Dimensões do Pacote C x L x A", "peso_produto": "Peso do Produto (g)",
+        "c_l_a_produto": "Dimensões do Produto C x L x A", "ajuste": "Produto Ajustável?",
+        "tema_variacao_pai": "Tema de Variação Principal"
+    }
+    for key, value in product.items():
+        if value and key in readable_keys:
+            context_parts.append(f"- {readable_keys[key]}: {value}")
+
+    variations = product.get('variacoes', [])
+    if variations:
+        context_parts.append("\n- Variações do Produto:")
+        for i, var in enumerate(variations):
+            var_details = []
+            readable_var_keys = {
+                "sku": "SKU da Variação", "tipo": "Tipo de Variação", "cor": "Nome da Cor",
+                "cla": "Dimensões (C x L x A)", "peso": "Peso (g)", "imagem": "URL da Imagem"
+            }
+            for v_key, v_value in var.items():
+                if v_value and v_key in readable_var_keys:
+                    var_details.append(f"  - {readable_var_keys[v_key]}: {v_value}")
+            if var_details:
+                context_parts.append(f"  Variação {i+1}:\n" + "\n".join(var_details))
+    
+    return "\n".join(context_parts)
+
 def scrape_mercadolivre_images(url: str) -> list[str]:
-    """
-    Extrai as URLs de imagem de alta resolução de uma página de produto do Mercado Livre.
-    """
     if "mercadolivre.com.br" not in url and "mercadolivre.com" not in url:
         raise ValueError("A URL fornecida não parece ser do Mercado Livre.")
-
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()  # Lança um erro para status HTTP ruins (4xx ou 5xx)
+        resp.raise_for_status()
     except requests.RequestException as e:
         raise ValueError(f"Erro ao acessar a URL: {e}")
-
     soup = BeautifulSoup(resp.text, 'html.parser')
     gallery = soup.find('div', class_='ui-pdp-gallery')
     images: list[str] = []
-
     if gallery:
         for img in gallery.find_all('img'):
             src = img.get('data-src') or img.get('src')
-            if not src:
-                continue
-            
+            if not src: continue
             high_res_src = re.sub(r'-\w\.(jpg|jpeg|webp)$', '-O.webp', src)
-
             src_lower = high_res_src.lower()
-            if src_lower.endswith('.gif') or src_lower.startswith('data:'):
-                continue
-            
+            if src_lower.endswith('.gif') or src_lower.startswith('data:'): continue
             width = img.get('width')
             height = img.get('height')
             if width and height:
                 try:
-                    if int(width) < 100 or int(height) < 100:
-                        continue
-                except ValueError:
-                    pass
-            
-            if high_res_src not in images:
-                images.append(high_res_src)
-    
-    if not images:
-        raise ValueError("Nenhuma imagem encontrada na galeria do produto.")
-        
+                    if int(width) < 100 or int(height) < 100: continue
+                except ValueError: pass
+            if high_res_src not in images: images.append(high_res_src)
+    if not images: raise ValueError("Nenhuma imagem encontrada na galeria do produto.")
     return images
 
-
-# Região: NamedTuple e Expressões Regulares para Excel
-# -----------------------------------------------------------------------------
-
 class OpcaoCampo(NamedTuple):
-    """
-    Representa uma opção de campo de validação de dados do Excel.
-    """
     field_name: str
     options: List[str]
     col_indices: List[int]
@@ -202,42 +210,17 @@ class PlanilhaChunk:
         self.col_start = col_start
         self.col_end = col_end
         self.campos = [] 
+    def adicionar_campo(self, campo_info: dict): self.campos.append(campo_info)
+    def to_dict(self): return {"nome": self.nome, "col_start": self.col_start, "col_end": self.col_end, "campos": self.campos}
+    def __repr__(self): return f"<PlanilhaChunk: {self.nome} (Colunas {self.col_start}-{self.col_end}), {len(self.campos)} campos>"
 
-    def adicionar_campo(self, campo_info: dict):
-        self.campos.append(campo_info)
-
-    def to_dict(self):
-        """Converte o objeto em um dicionário serializável para JSON."""
-        return {
-            "nome": self.nome,
-            "col_start": self.col_start,
-            "col_end": self.col_end,
-            "campos": self.campos
-        }
-
-    def __repr__(self):
-        return f"<PlanilhaChunk: {self.nome} (Colunas {self.col_start}-{self.col_end}), {len(self.campos)} campos>"
-
-
-EXPL_RANGE = re.compile(
-    r"^(?:'(?P<sheet_quoted>[^']+?)'|(?P<sheet_unquoted>[^'!]+?))!"
-    r"(?P<start>\$?[A-Z]{1,3}\$?\d+)"
-    r"(?::(?P<end>\$?[A-Z]{1,3}\$?\d+))?$"
-)
+EXPL_RANGE = re.compile(r"^(?:'(?P<sheet_quoted>[^']+?)'|(?P<sheet_unquoted>[^'!]+?))!(?P<start>\$?[A-Z]{1,3}\$?\d+)(?::(?P<end>\$?[A-Z]{1,3}\$?\d+))?$")
 RE_DIRECT = re.compile(r"^=?\s*([A-Za-z0-9_.\-]+)\s*$")
 RE_INDIRECT_SUFFIX = re.compile(r'&\s*"([A-Za-z0-9_\.]+)"')
 
-
-# Região: Helpers de IA e Cache
-# -----------------------------------------------------------------------------
 @lru_cache(maxsize=None)
 def get_s3_client():
-    return boto3.client(
-        's3',
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        region_name=AWS_S3_REGION_NAME
-    )
+    return boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY, region_name=AWS_S3_REGION_NAME)
 
 @lru_cache(maxsize=None)
 def get_model(temperature=0.2):
@@ -256,12 +239,11 @@ class AmazonListing(BaseModel):
     descricao_produto: str = Field(description="Descrição detalhada do produto, seguindo a estrutura com subtítulos e especificações técnicas.")
     palavras_chave: str = Field(description="String única contendo 10 a 15 palavras-chave relevantes, separadas por ponto e vírgula.")
 
-
 @lru_cache(maxsize=None)
 def get_main_ia_chain():
     output_parser = JsonOutputParser(pydantic_object=AmazonListing)
     prompt_template = PromptTemplate(
-        input_variables=["product_name"],
+        input_variables=["product_context"],
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
         template="""
         Crie um listing de produto para a Amazon com base nas informações fornecidas, seguindo exatamente o modelo abaixo.
@@ -270,47 +252,30 @@ def get_main_ia_chain():
         ESTRUTURA DO LISTING
 
         TÍTULO
-
         Deve conter entre 80 a 120 caracteres.
-
         Não usar símbolos como travessão ou barra.
-
         Incluir nome do produto e principais características técnicas ou dimensões.
 
         BULLET POINTS
-
         Inserir 5 bullets, cada um com entre 80 a 120 caracteres.
-
         Formato: primeiro termo em caixa alta seguido de dois pontos, depois a frase objetiva.
         Exemplo: CONFORTO: superfície adaptável que ajuda a reduzir pontos de pressão.
 
         DESCRIÇÃO DO PRODUTO
-
         Comece com o nome do produto e um breve reforço do benefício principal.
-
         Desenvolva 3 a 4 parágrafos curtos, cada um com um subtítulo, seguindo o padrão:
-
         Subtítulo 1 (exemplo: Ajuste Personalizado ao Corpo)
         Explique de forma clara como o produto entrega esse benefício.
-
         Subtítulo 2 (exemplo: Indicação de Uso)
         Descreva para quem o produto é indicado e situações de uso.
-
         Subtítulo 3 (exemplo: Prático de Higienizar)
         Explique sobre limpeza, manutenção e conservação.
-
         Especificações Técnicas
-
         Tipo: [tipo do produto]
-
         Dimensões: [medidas em metros]
-
         Peso máximo suportado: [exemplo: 130 kg]
-
         Certificação (se houver): [exemplo: ANVISA nº...]
-
         Outras informações técnicas relevantes em lista.
-
         Finalize com uma frase de impacto que incentive a compra, reforçando o benefício principal.
         Exemplo: Ideal para quem busca mais conforto e segurança no dia a dia.
 
@@ -319,8 +284,10 @@ def get_main_ia_chain():
 
         {format_instructions}
 
-        **Produto para Análise:**
-        `{product_name}`
+        **Informações Completas do Produto para Análise:**
+        ```
+        {product_context}
+        ```
         """
     )
     return prompt_template | get_model(temperature=0.2) | output_parser
@@ -337,8 +304,7 @@ def get_tradutor_chain():
 
 def preencher_grupo_de_colunas(ws, row: int, col_indices: list, valores: list, field_name_debug: str):
     try:
-        if not valores:
-            return
+        if not valores: return
         valores_unicos = list(dict.fromkeys(valores))
         colunas_ordenadas = sorted(col_indices)
         pares_coluna_valor = list(zip(colunas_ordenadas, valores_unicos))
@@ -347,85 +313,52 @@ def preencher_grupo_de_colunas(ws, row: int, col_indices: list, valores: list, f
             if not cell.value and valor_item and str(valor_item).lower() != 'nan':
                 cell.value = valor_item
     except Exception as e:
-        try:
-            print(f"ERRO CRÍTICO DENTRO DE 'preencher_grupo_de_colunas' para o campo '{field_name_debug}': {e}")
-        except Exception:
-            print(f"ERRO CRÍTICO DENTRO DE 'preencher_grupo_de_colunas'. Falha ao imprimir detalhes do erro: {e}")
+        try: print(f"ERRO CRÍTICO DENTRO DE 'preencher_grupo_de_colunas' para o campo '{field_name_debug}': {e}")
+        except Exception: print(f"ERRO CRÍTICO DENTRO DE 'preencher_grupo_de_colunas'. Falha ao imprimir detalhes do erro: {e}")
 
 ia_cache = {}
 def obter_com_cache(key, func, *args, **kwargs):
-    if key in ia_cache:
-        return ia_cache[key]
+    if key in ia_cache: return ia_cache[key]
     resultado = func(*args, **kwargs)
     ia_cache[key] = resultado
     return resultado
 
 def detectar_codificacao(path: str) -> str:
-    with open(path, "rb") as f:
-        bruto = f.read(10_000)
+    with open(path, "rb") as f: bruto = f.read(10_000)
     return chardet.detect(bruto)["encoding"] or "utf-8"
 
 def carregar_docs_csv(path: str, delimiter: str = ","):
-    if not os.path.exists(path):
-        return []
+    if not os.path.exists(path): return []
     loader = CSVLoader(file_path=path, csv_args={"delimiter": delimiter, "quotechar": '"'}, encoding=detectar_codificacao(path))
     return loader.load()
 
 def carregar_explorar_dados_csv(path: str) -> List[Document]:
-    if not os.path.exists(path):
-        return []
-    try:
-        encoding = detectar_codificacao(path) 
-        df = pd.read_csv(path, encoding=encoding)
-    except Exception as e:
-        return []
+    if not os.path.exists(path): return []
+    try: encoding = detectar_codificacao(path); df = pd.read_csv(path, encoding=encoding)
+    except Exception as e: return []
     documents = []
     for index, row in df.iterrows():
-        node_number = row.get("Número do Node")
-        browse_path = row.get("Caminho de Navegação")
-        positive_keywords = row.get("Palavras-Chave Positivas")
-        negative_keywords = row.get("Palavras-Chave Negativas")
+        node_number = row.get("Número do Node"); browse_path = row.get("Caminho de Navegação"); positive_keywords = row.get("Palavras-Chave Positivas"); negative_keywords = row.get("Palavras-Chave Negativas")
         if pd.notna(node_number) and pd.notna(browse_path):
             content_parts = [f"Caminho de Navegação: {browse_path}."]
-            if pd.notna(positive_keywords):
-                content_parts.append(f"Tópicos e funções relevantes para este caminho: {positive_keywords}.")
-            if pd.notna(negative_keywords):
-                content_parts.append(f"Tópicos e funções a evitar para este caminho: {negative_keywords}.")
-            enriched_page_content = " ".join(content_parts)
-            full_path_with_id = f"{browse_path} ({node_number})"
-            doc = Document(
-                page_content=enriched_page_content,
-                metadata={
-                    "tipo_dado": "caminho_navegacao",
-                    "Número do Node": str(node_number).strip(),
-                    "Caminho de Navegação": str(browse_path).strip(),
-                    "valor_opcao": full_path_with_id,
-                    "positive_keywords": str(positive_keywords).strip() if pd.notna(positive_keywords) else "",
-                    "negative_keywords": str(negative_keywords).strip() if pd.notna(negative_keywords) else ""
-                }
-            )
+            if pd.notna(positive_keywords): content_parts.append(f"Tópicos e funções relevantes para este caminho: {positive_keywords}.")
+            if pd.notna(negative_keywords): content_parts.append(f"Tópicos e funções a evitar para este caminho: {negative_keywords}.")
+            enriched_page_content = " ".join(content_parts); full_path_with_id = f"{browse_path} ({node_number})"
+            doc = Document(page_content=enriched_page_content, metadata={"tipo_dado": "caminho_navegacao", "Número do Node": str(node_number).strip(), "Caminho de Navegação": str(browse_path).strip(), "valor_opcao": full_path_with_id, "positive_keywords": str(positive_keywords).strip() if pd.notna(positive_keywords) else "", "negative_keywords": str(negative_keywords).strip() if pd.notna(negative_keywords) else ""})
             documents.append(doc)
     return documents
 
 def carregar_tipos_de_produto(path: str) -> List[Document]:
-    if not os.path.exists(path):
-        return []
-    try:
-        encoding = detectar_codificacao(path)
-        df = pd.read_csv(path, encoding=encoding)
-    except Exception as e:
-        return []
-    df_tipos_produto = df[df['campo'] == 'Tipo de produto -'].copy()
-    documentos = []
+    if not os.path.exists(path): return []
+    try: encoding = detectar_codificacao(path); df = pd.read_csv(path, encoding=encoding)
+    except Exception as e: return []
+    df_tipos_produto = df[df['campo'] == 'Tipo de produto -'].copy(); documentos = []
     for index, row in df_tipos_produto.iterrows():
         tipo_produto_valor = row.get("valor_opcao")
         if pd.notna(tipo_produto_valor):
             termo_em_pt = tipo_produto_valor.replace('_', ' ').lower()
             conteudo_descritivo = f"Tipo de Produto da Amazon: {tipo_produto_valor}. Categoria de produto para o item {termo_em_pt}."
-            doc = Document(
-                page_content=conteudo_descritivo,
-                metadata={"tipo_dado": "tipo_de_produto", "valor_opcao": tipo_produto_valor}
-            )
+            doc = Document(page_content=conteudo_descritivo, metadata={"tipo_dado": "tipo_de_produto", "valor_opcao": tipo_produto_valor})
             documentos.append(doc)
     return documentos
 
@@ -435,36 +368,29 @@ def get_vectorstore():
     faiss_index_path = os.path.join(settings.BASE_DIR, "faiss_index")
     if os.path.exists(os.path.join(faiss_index_path, "index.faiss")):
         return FAISS.load_local(faiss_index_path, embeddings, allow_dangerous_deserialization=True)
-    
-    j_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_J)
-    j_planilha_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_J_PLANILHA)
-    valores_validos_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_VALORES_VALIDOS) 
-    explorar_dados_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_EXPLORAR_DADOS)
-    definicoes_dados_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_DEFINICOES_DADOS)
-    all_docs = (
-        carregar_docs_csv(j_csv_path) + 
-        carregar_docs_csv(j_planilha_csv_path) + 
-        carregar_docs_csv(valores_validos_csv_path) + 
-        carregar_explorar_dados_csv(explorar_dados_csv_path) + 
-        carregar_docs_csv(definicoes_dados_csv_path)
-    )
-    if not all_docs:
-        return None
+    j_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_J); j_planilha_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_J_PLANILHA); valores_validos_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_VALORES_VALIDOS) ; explorar_dados_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_EXPLORAR_DADOS); definicoes_dados_csv_path = os.path.join(settings.BASE_DIR, "memo", NOME_CSV_DEFINICOES_DADOS)
+    all_docs = (carregar_docs_csv(j_csv_path) + carregar_docs_csv(j_planilha_csv_path) + carregar_docs_csv(valores_validos_csv_path) + carregar_explorar_dados_csv(explorar_dados_csv_path) + carregar_docs_csv(definicoes_dados_csv_path))
+    if not all_docs: return None
     vectorstore = FAISS.from_documents(all_docs, embeddings)
-    if not os.path.exists(faiss_index_path):
-        os.makedirs(faiss_index_path)
+    if not os.path.exists(faiss_index_path): os.makedirs(faiss_index_path)
     vectorstore.save_local(faiss_index_path, index_name="index")
     return vectorstore
 
-def escolher_com_ia(titulo_produto: str, fields_to_fill: List[Dict], assumed_items: FrozenSet[Tuple[str, str]], retriever) -> Tuple[Dict[str, str], int]:
+def escolher_com_ia(product_data: dict, fields_to_fill: List[Dict], assumed_items: FrozenSet[Tuple[str, str]], retriever) -> Tuple[Dict[str, str], int]:
     if not fields_to_fill:
         return {}, 0
+    
+    titulo_produto = product_data.get("titulo", "produto")
+    product_context_str = format_product_context(product_data)
     
     assumed_values = dict(assumed_items)
     context_query = f"Forneça informações e especificações para o produto '{titulo_produto}' para ajudar no preenchimento de seus atributos."
     
     relevant_docs = retriever.get_relevant_documents(context_query)
-    context_str = "\n".join([f"- {doc.page_content}" for doc in relevant_docs]) or "Nenhuma informação adicional encontrada."
+    retriever_context_str = "\n".join([f"- {doc.page_content}" for doc in relevant_docs]) or "Nenhuma informação adicional encontrada na base de conhecimento."
+    
+    full_context = f"DADOS DO PRODUTO:\n{product_context_str}\n\nINFORMAÇÕES ADICIONAIS DA BASE DE CONHECIMENTO:\n{retriever_context_str}"
+    
     fields_json_str = json.dumps(fields_to_fill, indent=2, ensure_ascii=False)
     
     multi_value_field_names = [f['field_name'] for f in fields_to_fill if f.get('multi_value', False)]
@@ -480,18 +406,17 @@ def escolher_com_ia(titulo_produto: str, fields_to_fill: List[Dict], assumed_ite
         )
     
     prompt = PromptTemplate(
-        input_variables=["product", "context", "assumed_values", "fields_json", "multi_value_context"],
+        input_variables=["product", "context", "assumed_values", "fields_json", "multi_value_context", "critical_context"],
         template=(
             "Você é um especialista em catalogação de produtos para e-commerce, seguindo as diretrizes da Amazon.\n"
             "Sua tarefa é preencher vários campos para um produto com base nas opções disponíveis para cada um.\n"
-            "Analise o título do produto, o contexto e os valores de referência para tomar a decisão mais precisa para CADA campo.\n\n"
+            "Analise o título do produto, o CONTEXTO COMPLETO e os valores de referência para tomar a decisão mais precisa para CADA campo.\n\n"
             "REGRAS IMPORTANTES:\n"
             "- {critical_context}"
             "- Para a maioria dos campos, retorne uma única string como valor.\n"
             "- {multi_value_context}"
             "- Se nenhuma opção for adequada ou se a informação for desconhecida, use a string 'nan'.\n\n"
-            "--- DADOS DO PRODUTO ---\nProduto: '{product}'\n\n"
-            "--- CONTEXTO DA BASE DE CONHECIMENTO ---\n{context}\n\n"
+            "--- DADOS DO PRODUTO E CONTEXTO ---\nProduto de Referência: '{product}'\n\nContexto Completo:\n{context}\n\n"
             "--- VALORES DE REFERÊNCIA ---\n{assumed_values}\n\n"
             "--- CAMPOS PARA PREENCHER ---\n{fields_json}\n\n"
             "--- INSTRUÇÃO DE SAÍDA ---\n"
@@ -501,7 +426,7 @@ def escolher_com_ia(titulo_produto: str, fields_to_fill: List[Dict], assumed_ite
         )
     ).format(
         product=titulo_produto,
-        context=context_str,
+        context=full_context,
         assumed_values=json.dumps(assumed_values, indent=2, ensure_ascii=False),
         fields_json=fields_json_str,
         multi_value_context=multi_value_context,
@@ -519,13 +444,13 @@ def escolher_com_ia(titulo_produto: str, fields_to_fill: List[Dict], assumed_ite
     except json.JSONDecodeError:
         return {}, total_tokens
 
-def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, titulo_produto: str, context_info: str, campos_criticos: set, persona_especialista: str):
-    """
-    Esta função agora recebe os dados de um chunk e RETORNA as escolhas da IA,
-    em vez de escrever diretamente na planilha.
-    """
+def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict, retriever_context_info: str, campos_criticos: set, persona_especialista: str):
     print(f"\nINFO: Processando o Chunk '{chunk_name}'...")
     
+    titulo_produto = product_data.get("titulo", "produto")
+    product_context_str = format_product_context(product_data)
+    full_context = f"DADOS COMPLETOS DO PRODUTO:\n{product_context_str}\n\nINFORMAÇÕES ADICIONAIS DA BASE DE CONHECIMENTO:\n{retriever_context_info}"
+
     chunk = PlanilhaChunk(chunk_data['nome'], chunk_data['col_start'], chunk_data['col_end'])
     chunk.campos = chunk_data['campos']
 
@@ -541,8 +466,8 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, titulo_produto: st
 
     print(f"  -> Estágio 1: Verificando a relevância de {len(nomes_l4_dos_campos_vazios)} grupos de campos para o produto...")
     prompt_triagem = (
-        f"Para um produto com o título '{titulo_produto}', "
-        f"avalie a lista de grupos de atributos a seguir: {', '.join(nomes_l4_dos_campos_vazios)}. "
+        f"Com base nas informações completas do produto: \n\n{product_context_str}\n\n"
+        f"Avalie a lista de grupos de atributos a seguir: {', '.join(nomes_l4_dos_campos_vazios)}. "
         f"Responda APENAS com um objeto JSON contendo uma única chave 'campos_relevantes', "
         f"cujo valor é uma lista de strings com os nomes dos atributos da lista que são REALMENTE RELEVANTES. "
         f"Exemplo: para uma VELA, o atributo 'Voltagem' é irrelevante e não deve ser incluído na resposta."
@@ -590,8 +515,8 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, titulo_produto: st
         "5.  **VALORES EM PORTUGUÊS BRASILEIRO.**\n"
         "6.  **CAMPOS CRÍTICOS:** {contexto_critico}\n\n"
         "### DADOS PARA ANÁLISE\n"
-        "**Produto Principal:**\n`{titulo_produto}`\n\n"
-        "**Contexto da Base de Conhecimento:**\n{context_info}\n\n"
+        "**Produto de Referência:**\n`{titulo_produto}`\n\n"
+        "**Contexto Completo:**\n{context_info}\n\n"
         "### CAMPOS PARA PREENCHER (APENAS DESTE GRUPO RELEVANTE)\n"
         "{campos_str_detalhado}\n"
         "### INSTRUÇÃO DE SAÍDA FINAL\n"
@@ -600,7 +525,7 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, titulo_produto: st
         persona=persona_especialista,
         contexto_critico=contexto_critico or "Nenhum campo crítico neste grupo.",
         titulo_produto=titulo_produto,
-        context_info=context_info or "Nenhum.",
+        context_info=full_context,
         campos_str_detalhado=campos_str_detalhado
     )
     
@@ -626,22 +551,16 @@ def filtrar_documentos_dinamicamente(documentos_brutos: list, titulo_produto: st
     documentos_filtrados = []
     for doc in documentos_brutos:
         palavras_negativas_str = doc.metadata.get('negative_keywords', '')
-        if not palavras_negativas_str:
-            documentos_filtrados.append(doc)
-            continue
+        if not palavras_negativas_str: documentos_filtrados.append(doc); continue
         lista_palavras_negativas = [kw.strip() for kw in palavras_negativas_str.split(',')]
         houve_conflito = False
         for palavra in lista_palavras_negativas:
-            if palavra and palavra in titulo_produto:
-                houve_conflito = True
-                break
-        if not houve_conflito:
-            documentos_filtrados.append(doc)
+            if palavra and palavra in titulo_produto: houve_conflito = True; break
+        if not houve_conflito: documentos_filtrados.append(doc)
     return documentos_filtrados
 
 def filtrar_por_relevancia_lexical(documentos: list, must_have_keywords: list) -> list:
-    if not must_have_keywords:
-        return documentos
+    if not must_have_keywords: return documentos
     documentos_filtrados = []
     for doc in documentos:
         conteudo_doc_lower = doc.page_content.lower()
@@ -650,8 +569,7 @@ def filtrar_por_relevancia_lexical(documentos: list, must_have_keywords: list) -
     return documentos_filtrados
 
 def parse_form_data(post_data, files_data):
-    output = {}
-    key_regex = re.compile(r'\[([^\]]*)\]')
+    output = {}; key_regex = re.compile(r'\[([^\]]*)\]')
     for key, value in post_data.items():
         parts = key_regex.findall(key)
         if not parts: continue
@@ -672,42 +590,31 @@ def mapear_chunks_da_planilha(ws) -> dict[str, PlanilhaChunk]:
         min_col, min_row, max_col, max_row = merged_cell_range.bounds
         if min_row == 3:
             chunk_name = ws.cell(row=min_row, column=min_col).value
-            if not chunk_name:
-                continue
+            if not chunk_name: continue
             chunk_obj = PlanilhaChunk(nome=chunk_name, col_start=min_col, col_end=max_col)
             for col in range(min_col, max_col + 1):
                 header_l4 = str(ws.cell(row=4, column=col).value or '').strip()
                 header_l5 = str(ws.cell(row=5, column=col).value or '').strip()
-                if header_l4 or header_l5:
-                    chunk_obj.adicionar_campo({'col': col, 'cabecalho_l4': header_l4, 'cabecalho_l5': header_l5})
+                if header_l4 or header_l5: chunk_obj.adicionar_campo({'col': col, 'cabecalho_l4': header_l4, 'cabecalho_l5': header_l5})
             chunks[chunk_name] = chunk_obj
     return chunks
 
 def _ler_range(ws, coord):
-    bounds = coord if ':' in coord else f"{coord}:{coord}"
-    min_col, min_row, max_col, max_row = range_boundaries(bounds)
-    valores = []
+    bounds = coord if ':' in coord else f"{coord}:{coord}"; min_col, min_row, max_col, max_row = range_boundaries(bounds); valores = []
     for r in range(min_row, max_row + 1):
         for c in range(min_col, max_col + 1):
             valor = ws.cell(row=r, column=c).value
-            if valor is not None:
-                valores.append(str(valor))
+            if valor is not None: valores.append(str(valor))
     return valores
 
 def construir_mapas_nomeados(wb):
-    full_map = {}
-    suffix_map = {}
+    full_map = {}; suffix_map = {}
     for name, defn in wb.defined_names.items():
-        if not defn.destinations:
-            continue
+        if not defn.destinations: continue
         for sheet_title, coord in defn.destinations:
             try:
-                ws = wb[sheet_title]
-                full_map[name] = (ws, coord)
-                suffix = name.split('_', 1)[-1]
-                suffix_map.setdefault(suffix, []).append(name)
-            except KeyError:
-                print(f"AVISO: Planilha '{sheet_title}' não encontrada para o range nomeado '{name}'.")
+                ws = wb[sheet_title]; full_map[name] = (ws, coord); suffix = name.split('_', 1)[-1]; suffix_map.setdefault(suffix, []).append(name)
+            except KeyError: print(f"AVISO: Planilha '{sheet_title}' não encontrada para o range nomeado '{name}'.")
     return full_map, suffix_map
 
 def extrair_opcoes(wb, ws, bruto_formula, nr_full_map, nr_suffix_map, row):
@@ -715,204 +622,147 @@ def extrair_opcoes(wb, ws, bruto_formula, nr_full_map, nr_suffix_map, row):
     if f_bruto.strip().upper().startswith('IF(') and 'INDIRECT' in f_bruto.upper():
         inner_indirects = re.findall(r'INDIRECT\((.*?)\)', f_bruto, flags=re.IGNORECASE)
         for inner in inner_indirects:
+            # *** INÍCIO DA CORREÇÃO: Garante que 'opts' sempre tenha um valor ***
             opts = extrair_opcoes(wb, ws, f"INDIRECT({inner})", nr_full_map, nr_suffix_map, row)
-            if opts:
-                return opts
+            if opts: return opts
+            # *** FIM DA CORREÇÃO ***
+    
+    # *** INÍCIO DA CORREÇÃO: Inicializa 'opts' antes do loop ***
+    opts = []
     literal_names = re.findall(r'"([A-Za-z0-9_\.\[\]\=\#\-]+)"', f_bruto)
     for name in literal_names:
-        if name in nr_full_map:
+        if name in nr_full_map: 
             ws_nr, coord = nr_full_map[name]
             opts = _ler_range(ws_nr, coord)
-            if opts:
-                return opts
-    f = f_bruto.lstrip('=').strip()
-    m = RE_DIRECT.match(f)
+            if opts: return opts
+    # *** FIM DA CORREÇÃO ***
+
+    f = f_bruto.lstrip('=').strip(); m = RE_DIRECT.match(f)
     if m:
         name = m.group(1)
-        if name in nr_full_map:
+        if name in nr_full_map: 
             ws_nr, coord = nr_full_map[name]
             opts = _ler_range(ws_nr, coord)
-            if opts:
-                return opts
+            if opts: return opts
     if f.upper().startswith('INDIRECT'):
-        prefix = str(ws.cell(row=row, column=3).value or '').replace('-', '_').replace(' ', '_')
-        cleaned = re.sub(r'VLOOKUP\([^)]*\)', '', f_bruto)
-        match = RE_INDIRECT_SUFFIX.search(cleaned)
+        prefix = str(ws.cell(row=row, column=3).value or '').replace('-', '_').replace(' ', '_'); cleaned = re.sub(r'VLOOKUP\([^)]*\)', '', f_bruto); match = RE_INDIRECT_SUFFIX.search(cleaned)
         if match:
-            suffix = match.group(1)
-            cand = prefix + suffix
-            if cand in nr_full_map:
+            suffix = match.group(1); cand = prefix + suffix
+            if cand in nr_full_map: 
                 ws1, coord1 = nr_full_map[cand]
                 opts = _ler_range(ws1, coord1)
-                if opts:
-                    return opts
+                if opts: return opts
             for nm in nr_full_map:
-                if suffix in nm:
+                if suffix in nm: 
                     ws2, coord2 = nr_full_map[nm]
                     opts = _ler_range(ws2, coord2)
-                    if opts:
-                        return opts
-    if f.startswith('"') and f.endswith('"'):
-        return [valor.strip() for valor in re.split(r'[;,]', f.strip('"')) if valor.strip()]
-    if f.startswith('{') and f.endswith('}'):
-        return [valor.strip() for valor in re.split(r'[;,]', f.strip('{}')) if valor.strip()]
+                    if opts: return opts
+    if f.startswith('"') and f.endswith('"'): return [valor.strip() for valor in re.split(r'[;,]', f.strip('"')) if valor.strip()]
+    if f.startswith('{') and f.endswith('}'): return [valor.strip() for valor in re.split(r'[;,]', f.strip('{}')) if valor.strip()]
     m2 = EXPL_RANGE.match(f)
     if m2:
-        sheet = (m2.group('sheet_quoted') or m2.group('sheet_unquoted') or ws.title).strip()
-        coord = m2.group('start') + (':' + m2.group('end') if m2.group('end') else '')
-        try:
+        sheet = (m2.group('sheet_quoted') or m2.group('sheet_unquoted') or ws.title).strip(); coord = m2.group('start') + (':' + m2.group('end') if m2.group('end') else '')
+        try: 
             tgt = wb[sheet]
             opts = _ler_range(tgt, coord)
-            if opts:
-                return opts
-        except KeyError:
-            print(f"AVISO: Planilha referenciada '{sheet}' não encontrada: {f_bruto}")
-    if f in nr_full_map:
+            if opts: return opts
+        except KeyError: print(f"AVISO: Planilha referenciada '{sheet}' não encontrada: {f_bruto}")
+    if f in nr_full_map: 
         ws_fb, coord_fb = nr_full_map[f]
         opts = _ler_range(ws_fb, coord_fb)
-        if opts:
-            return opts
+        if opts: return opts
     return []
 
 def coletar_opcoes_campo(wb, sheet_name: str, data_row: int) -> dict:
-    ws = wb[sheet_name]
-    nr_full_map, nr_suffix_map = construir_mapas_nomeados(wb)
-    field_groups = {}
+    ws = wb[sheet_name]; nr_full_map, nr_suffix_map = construir_mapas_nomeados(wb); field_groups = {}
     for dv in ws.data_validations.dataValidation:
-        if dv and (dv.type or '').lower() != 'list':
-            continue
+        if dv and (dv.type or '').lower() != 'list': continue
         opts = extrair_opcoes(wb, ws, dv.formula1 or "", nr_full_map, nr_suffix_map, data_row)
-        if not opts:
-            opts = ["nan"]
+        if not opts: opts = ["nan"]
         cols = []
         for cr in dv.ranges:
             min_c, min_r, max_c, max_r = cr.bounds
-            if min_r <= data_row <= max_r:
-                cols.extend(range(min_c, max_c + 1))
-        if not cols:
-            continue
+            if min_r <= data_row <= max_r: cols.extend(range(min_c, max_c + 1))
+        if not cols: continue
         cabecalho = str(ws.cell(row=4, column=cols[0]).value or "").strip()
-        if not cabecalho:
-            continue
-        if cabecalho not in field_groups:
-            field_groups[cabecalho] = {'field_name': cabecalho, 'options': opts, 'col_indices': cols}
-        else:
-            field_groups[cabecalho]['col_indices'].extend(cols)
+        if not cabecalho: continue
+        if cabecalho not in field_groups: field_groups[cabecalho] = {'field_name': cabecalho, 'options': opts, 'col_indices': cols}
+        else: field_groups[cabecalho]['col_indices'].extend(cols)
     return field_groups
 
 def extract_template_fields(template_path: str):
-    if not os.path.exists(template_path):
-        raise FileNotFoundError(f"O arquivo de template não foi encontrado em: {template_path}")
+    if not os.path.exists(template_path): raise FileNotFoundError(f"O arquivo de template não foi encontrado em: {template_path}")
     workbook = load_workbook(filename=template_path, read_only=True, keep_vba=True)
-    try:
-        sheet = workbook["Modelo"]
-    except KeyError:
-        raise ValueError("A aba 'Modelo' não foi encontrada no arquivo.")
-    headers_map = {}
-    max_col = sheet.max_column
+    try: sheet = workbook["Modelo"]
+    except KeyError: raise ValueError("A aba 'Modelo' não foi encontrada no arquivo.")
+    headers_map = {}; max_col = sheet.max_column
     for col_idx in range(1, max_col + 1):
         header_l4 = str(sheet.cell(row=4, column=col_idx).value or '').strip()
         header_l5 = str(sheet.cell(row=5, column=col_idx).value or '').strip()
-        if not header_l4:
-            continue
-        if header_l4 not in headers_map:
-            headers_map[header_l4] = {'tech_names': []}
+        if not header_l4: continue
+        if header_l4 not in headers_map: headers_map[header_l4] = {'tech_names': []}
         headers_map[header_l4]['tech_names'].append({'name': header_l5, 'col': col_idx})
     template_structure = {}
     for header, data in headers_map.items():
-        if len(data['tech_names']) > 1:
-            template_structure[header] = { item['name']: "" for item in data['tech_names'] if item['name'] }
+        if len(data['tech_names']) > 1: template_structure[header] = { item['name']: "" for item in data['tech_names'] if item['name'] }
         else:
-            if data['tech_names']:
-                template_structure[header] = ""
-            else:
-                template_structure[header] = ""
+            if data['tech_names']: template_structure[header] = ""
+            else: template_structure[header] = ""
     return template_structure, headers_map
 
 def parse_ai_response_to_dict(text_response: str) -> dict:
-    response_dict = {}
-    lines = text_response.strip().split('\n')
+    response_dict = {}; lines = text_response.strip().split('\n')
     for line in lines:
-        if '::' not in line:
-            continue
-        key, value = line.split('::', 1)
-        key = key.strip()
-        value = value.strip()
+        if '::' not in line: continue
+        key, value = line.split('::', 1); key = key.strip(); value = value.strip()
         if '>' in key:
-            parent_key, child_key = key.split('>', 1)
-            parent_key = parent_key.strip()
-            child_key = child_key.strip()
-            if parent_key not in response_dict:
-                response_dict[parent_key] = {}
+            parent_key, child_key = key.split('>', 1); parent_key = parent_key.strip(); child_key = child_key.strip()
+            if parent_key not in response_dict: response_dict[parent_key] = {}
             response_dict[parent_key][child_key] = value
-        else:
-            response_dict[key] = value
+        else: response_dict[key] = value
     return response_dict
 
 def write_to_sheet(sheet, row_num, ai_response_dict, headers_map):
     for header, value in ai_response_dict.items():
-        if header not in headers_map:
-            continue
+        if header not in headers_map: continue
         if isinstance(value, dict):
             for tech_name, sub_value in value.items():
                 for item in headers_map[header]['tech_names']:
-                    if item['name'] == tech_name:
-                        sheet.cell(row=row_num, column=item['col'], value=sub_value)
-                        break
+                    if item['name'] == tech_name: sheet.cell(row=row_num, column=item['col'], value=sub_value); break
         else:
-            if headers_map[header]['tech_names']:
-                col_idx = headers_map[header]['tech_names'][0]['col']
-                sheet.cell(row=row_num, column=col_idx, value=value)
+            if headers_map[header]['tech_names']: col_idx = headers_map[header]['tech_names'][0]['col']; sheet.cell(row=row_num, column=col_idx, value=value)
 
 def identificar_campos_multi_valor(ws) -> set:
-    base_name_counts = defaultdict(int)
-    base_name_to_header_l4 = {}
-    regex_base_name = re.compile(r"^(.*?)(?:\[.*?\])?#\d+\.value$")
-    header_l4_cache = {}
+    base_name_counts = defaultdict(int); base_name_to_header_l4 = {}; regex_base_name = re.compile(r"^(.*?)(?:\[.*?\])?#\d+\.value$"); header_l4_cache = {}
     for col_idx in range(1, ws.max_column + 1):
         header_l5 = ws.cell(row=5, column=col_idx).value
-        if not header_l5 or not isinstance(header_l5, str):
-            continue
+        if not header_l5 or not isinstance(header_l5, str): continue
         match = regex_base_name.match(header_l5)
         if match:
-            base_name = match.group(1)
-            base_name_counts[base_name] += 1
+            base_name = match.group(1); base_name_counts[base_name] += 1
             if base_name not in base_name_to_header_l4:
                 current_header_l4 = ""
                 for back_col_idx in range(col_idx, 0, -1):
                     cached_val = header_l4_cache.get(back_col_idx)
-                    if cached_val:
-                        current_header_l4 = cached_val
-                        break
+                    if cached_val: current_header_l4 = cached_val; break
                     cell_val = ws.cell(row=4, column=back_col_idx).value
-                    if cell_val:
-                        current_header_l4 = str(cell_val).strip()
-                        header_l4_cache[back_col_idx] = current_header_l4
-                        break
-                if current_header_l4:
-                    base_name_to_header_l4[base_name] = current_header_l4
+                    if cell_val: current_header_l4 = str(cell_val).strip(); header_l4_cache[back_col_idx] = current_header_l4; break
+                if current_header_l4: base_name_to_header_l4[base_name] = current_header_l4
     multi_value_fields = set()
     for base_name, count in base_name_counts.items():
         if count > 1:
-            if base_name in base_name_to_header_l4:
-                header_l4 = base_name_to_header_l4[base_name]
-                multi_value_fields.add(header_l4)
+            if base_name in base_name_to_header_l4: header_l4 = base_name_to_header_l4[base_name]; multi_value_fields.add(header_l4)
     return multi_value_fields
 
-def normalizar_ncm(bruto_ncm: str) -> str:
-    return re.sub(r'\D', '', bruto_ncm or '') or ""
-
+def normalizar_ncm(bruto_ncm: str) -> str: return re.sub(r'\D', '', bruto_ncm or '') or ""
 def gerar_ncm_aleatorio() -> str:
     while True:
         ncm = f"{random.randint(0, 99_999_999):08d}"
-        if ncm != "00000000":
-            return ncm
+        if ncm != "00000000": return ncm
 
 def normalizar_quantidade(qty_str: str, allow_stock: bool) -> Optional[int]:
-    try:
-        qty = int(float(qty_str))
-    except (ValueError, TypeError):
-        qty = None
+    try: qty = int(float(qty_str))
+    except (ValueError, TypeError): qty = None
     return qty if allow_stock else None
 
 def analisar_dimensoes(bruto: str) -> List[Optional[float]]:
@@ -923,116 +773,74 @@ def analisar_dimensoes(bruto: str) -> List[Optional[float]]:
     return [to_float(p) for p in partes]
 
 def preencher_dimensoes(ws, row, cabecalhos: Dict[str,int], bruto_dim_str: str, campos_valor: List[str], campos_unidade: Optional[List[str]] = None, unidade_padrao: str = "centímetros"):
-    partes = [p.strip().replace(',', '.') for p in bruto_dim_str.split('x')]
-    valores = []
+    partes = [p.strip().replace(',', '.') for p in bruto_dim_str.split('x')]; valores = []
     for p in partes:
-        try:
-            valores.append(float(p))
-        except ValueError:
-            valores.append(None)
+        try: valores.append(float(p))
+        except ValueError: valores.append(None)
     _celula = ws.cell
     for indice, cabecalho in enumerate(campos_valor):
         col = cabecalhos.get(cabecalho)
-        if not col:
-            continue
+        if not col: continue
         valor = valores[indice] if indice < len(valores) else None
         _celula(row=row, column=col, value=valor)
     if campos_unidade:
         for cabecalho in campos_unidade:
             col = cabecalhos.get(cabecalho)
-            if col:
-                _celula(row=row, column=col, value=unidade_padrao)
+            if col: _celula(row=row, column=col, value=unidade_padrao)
 
 def preencher_campos_peso(ws, cabecalhos, bruto_peso_value, unit_map, row):
     def normalizar_numero_interno(bruto):
-        try:
-            return float(str(bruto).replace(',', '.'))
-        except (ValueError, TypeError):
-            return None
+        try: return float(str(bruto).replace(',', '.'))
+        except (ValueError, TypeError): return None
     peso_val = normalizar_numero_interno(bruto_peso_value)
-    if peso_val is None:
-        return
+    if peso_val is None: return
     for cabecalho_nome, col_indice in cabecalhos.items():
         if "Peso" in cabecalho_nome and (cabecalho_nome.endswith("peso") or cabecalho_nome.endswith("item")):
             ws.cell(row=row, column=col_indice, value=peso_val)
     for unit_cabecalho, unit_str in unit_map.items():
         col = cabecalhos.get(unit_cabecalho)
-        if col:
-            ws.cell(row=row, column=col, value=unit_str)
+        if col: ws.cell(row=row, column=col, value=unit_str)
 
 def normalizar_numero(bruto: str) -> float:
-    try:
-        return float(bruto.replace(',', '.'))
-    except (ValueError, TypeError):
-        return 0.0
+    try: return float(bruto.replace(',', '.'))
+    except (ValueError, TypeError): return 0.0
 
-def normalizar_unidade(cabecalho: str, bruto_unit: str) -> str:
-    return MAPA_UNIDADES.get(cabecalho.strip(), "").lower().capitalize()
+def normalizar_unidade(cabecalho: str, bruto_unit: str) -> str: return MAPA_UNIDADES.get(cabecalho.strip(), "").lower().capitalize()
 
 def processar_string_produto_pai(texto_original: Union[str, float]) -> str:
-    texto_str = str(texto_original)
-    texto_sem_produto_pai = texto_str.replace("Produto pai:", "")
-    partes = texto_sem_produto_pai.split("Variações:")
-    texto_final = partes[0]
+    texto_str = str(texto_original); texto_sem_produto_pai = texto_str.replace("Produto pai:", ""); partes = texto_sem_produto_pai.split("Variações:"); texto_final = partes[0]
     return texto_final.strip()
 
-
 def set_cell_value(ws, row, header_map, header_name, value):
-    """Função centralizada para escrever um valor na planilha com base no nome do cabeçalho."""
-    if not value or str(value).strip() == '':
-        return # Não preenche se o valor for vazio
+    if not value or str(value).strip() == '': return
     col_index = header_map.get(header_name)
-    if col_index:
-        ws.cell(row=row, column=col_index, value=value)
-    else:
-        pass
+    if col_index: ws.cell(row=row, column=col_index, value=value)
+    else: pass
 
 def preencher_dados_fixos(ws, row, product, image_urls, cabecalho4, cabecalho5):
-    """
-    Preenche todos os campos estáticos que vêm do formulário do frontend.
-    Esta função tem a palavra final e pode sobrescrever dados da IA se necessário.
-    """
     print(f"INFO: Aplicando dados do formulário para o produto SKU {product.get('sku')}")
-    
     set_cell_value(ws, row, cabecalho4, "SKU", product.get("sku"))
-    
     nome_modelo = product.get("nome_marca") if product.get("tipo_marca") == "Marca" else product.get("titulo")
     set_cell_value(ws, row, cabecalho4, "Nome do Modelo", nome_modelo)
-    
     set_cell_value(ws, row, cabecalho4, "Preço sugerido com impostos", product.get("preco"))
-    
     marca_valor = "Genérico" if product.get("tipo_marca") in ("Genérico", "") else product.get("nome_marca")
     set_cell_value(ws, row, cabecalho4, "Fabricante", marca_valor)
     set_cell_value(ws, row, cabecalho4, "Nome da marca", marca_valor)
     set_cell_value(ws, row, cabecalho4, "ID do produto", product.get("id_produto"))
-    
-    if product.get("tipo_id_produto"):
-        set_cell_value(ws, row, cabecalho4, "Tipo de ID do produto", product.get("tipo_id_produto"))
-
+    if product.get("tipo_id_produto"): set_cell_value(ws, row, cabecalho4, "Tipo de ID do produto", product.get("tipo_id_produto"))
     allow_stock = False
     if product.get("fba_dba", "").upper() == "FBA":
-        set_cell_value(ws, row, cabecalho4, "Código do canal de processamento (BR)", "AMAZON_NA")
-        allow_stock = True
-    else:
-        set_cell_value(ws, row, cabecalho4, "Código do canal de processamento (BR)", "DEFAULT")
-    
+        set_cell_value(ws, row, cabecalho4, "Código do canal de processamento (BR)", "AMAZON_NA"); allow_stock = True
+    else: set_cell_value(ws, row, cabecalho4, "Código do canal de processamento (BR)", "DEFAULT")
     qty = normalizar_quantidade(product.get("quantidade"), allow_stock)
     set_cell_value(ws, row, cabecalho4, "Quantidade (BR)", qty)
-    
     ncm_val = normalizar_ncm(product.get("ncm")) or gerar_ncm_aleatorio()
     set_cell_value(ws, row, cabecalho4, "Código NCM", ncm_val)
-
-    if product.get("c_l_a_pacote"):
-        preencher_dimensoes(ws, row, cabecalho4, product["c_l_a_pacote"], ["Comprimento do pacote", "Largura do pacote", "Altura do pacote"])
-    if product.get("peso_pacote"):
-        preencher_campos_peso(ws, cabecalho5, product["peso_pacote"], MAPA_UNIDADES, row)
-    if product.get("c_l_a_produto"):
-        preencher_dimensoes(ws, row, cabecalho4, product["c_l_a_produto"], ["Comprimento do item", "Largura do item", "Altura do item"])
-
+    if product.get("c_l_a_pacote"): preencher_dimensoes(ws, row, cabecalho4, product["c_l_a_pacote"], ["Comprimento do pacote", "Largura do pacote", "Altura do pacote"])
+    if product.get("peso_pacote"): preencher_campos_peso(ws, cabecalho5, product["peso_pacote"], MAPA_UNIDADES, row)
+    if product.get("c_l_a_produto"): preencher_dimensoes(ws, row, cabecalho4, product["c_l_a_produto"], ["Comprimento do item", "Largura do item", "Altura do item"])
     if image_urls.get('principal'): set_cell_value(ws, row, cabecalho4, "URL da imagem principal", image_urls['principal'])
     if image_urls.get('amostra'): set_cell_value(ws, row, cabecalho4, "URL da imagem de amostra", image_urls['amostra'])
-    
     extra_cols = [cell.column for cell in ws[5] if cell.value and str(cell.value).startswith("other_product_image_locator")]
     for j, url in enumerate(image_urls.get('extra', [])):
-        if j < len(extra_cols):
-            ws.cell(row=row, column=extra_cols[j], value=url)
+        if j < len(extra_cols): ws.cell(row=row, column=extra_cols[j], value=url)

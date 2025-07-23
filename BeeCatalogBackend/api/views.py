@@ -42,14 +42,27 @@ class SpreadsheetUploadView(APIView):
             return Response({'error': 'Nenhum arquivo de planilha enviado.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             df = pd.read_excel(file_obj, skiprows=1, engine='openpyxl')
-            df_selecionado = df.iloc[1:20]
+            
+            df_selecionado = df.head(20)
+
             registros = df_selecionado.fillna('').to_dict("records")
             lista_produtos = []
             for linha in registros:
                 sku_original = str(linha.get("SKU:", "")).strip()
+                if not sku_original:
+                    continue
+
                 processed_sku = utils.processar_string_produto_pai(sku_original)
+                
+                titulo = str(linha.get("NOME DO PRODUTO", "")).strip()
+                if not titulo:
+                    tipo_marca = str(linha.get("TIPO DE MARCA", "")).strip()
+                    marca = str(linha.get("MARCA:", "")).strip()
+                    nome_base = marca if tipo_marca == "Marca" else tipo_marca
+                    titulo = f"{nome_base} {processed_sku}" if nome_base else processed_sku
+
                 produto = {
-                    "titulo": str(linha.get("NOME DO PRODUTO", "")).strip(),
+                    "titulo": titulo,
                     "sku": processed_sku,
                     "tipo_marca": str(linha.get("TIPO DE MARCA", "")).strip(),
                     "nome_marca": str(linha.get("MARCA:", "")).strip(),
@@ -87,7 +100,6 @@ class SpreadsheetGenerateView(APIView):
         except json.JSONDecodeError:
             return Response({'error': 'JSON de dados dos produtos inválido.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Salva o arquivo de template em um local temporário
         temp_dir = os.path.join(settings.BASE_DIR, "temp_files")
         os.makedirs(temp_dir, exist_ok=True)
         temp_template_path = os.path.join(temp_dir, f"input_{uuid.uuid4()}.xlsm")
@@ -129,7 +141,6 @@ class SpreadsheetGenerateView(APIView):
             except Exception as e:
                 return Response({'error': f'Erro no upload da imagem {uploaded_file.name}: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # Passa o CAMINHO do arquivo para a task, não o conteúdo
         maestra_task = generate_spreadsheet_task.delay(products_data, image_urls_map, temp_template_path)
         
         try:

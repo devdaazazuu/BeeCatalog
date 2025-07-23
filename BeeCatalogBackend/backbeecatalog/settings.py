@@ -1,3 +1,5 @@
+# settings.py
+
 import os
 from pathlib import Path
 
@@ -54,12 +56,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backbeecatalog.wsgi.application'
 
+# Configuração para usar APENAS SQLite
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # Adiciona um timeout para reduzir erros de "database is locked" com Celery
+        'OPTIONS': {
+            'timeout': 20,
+        },
     }
 }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
