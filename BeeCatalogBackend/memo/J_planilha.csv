@@ -1,0 +1,323 @@
+Campo da Planilha; Explicação do Campo; Exemplos de Resposta
+SKU; Identificador único do produto utilizado para gerenciamento de inventário; ABC123
+Ação de oferta; Define se a oferta será criada, atualizada ou removida; (Padrão) Criar ou substituir
+Tipo de produto; Categoria de anúncio do item (por exemplo, “ACESSÓRIO”, “ELETRÔNICO” etc.); ACESSÓRIO
+Nome do Produto; Título completo conforme exibido na página de detalhe; Tela Pintada à Mão Retratando um Vinhedo da Toscana
+Nome da marca; Marca proprietária ou fabricante reconhecido; Sony
+Tipo de ID do produto; Especifica qual sistema de identificação é usado (UPC, EAN, ISBN, GTIN etc.); UPC
+ID do produto; Código correspondente ao tipo de ID escolhido; 714532191586
+Caminhos de Navegação Recomendados; Hierarquia de subcategorias que facilita a localização do produto; Barras dietéticas > Barras dietéticas > Barras dietéticas > Barras dietéticas
+Caminhos de Navegação Recomendados; Hierarquia de subcategorias que facilita a localização do produto; Barras dietéticas > Barras dietéticas > Barras dietéticas > Barras dietéticas
+Caminhos de Navegação Recomendados; Hierarquia de subcategorias que facilita a localização do produto; Barras dietéticas > Barras dietéticas > Barras dietéticas > Barras dietéticas
+Caminhos de Navegação Recomendados; Hierarquia de subcategorias que facilita a localização do produto; Barras dietéticas > Barras dietéticas > Barras dietéticas > Barras dietéticas
+Caminhos de Navegação Recomendados; Hierarquia de subcategorias que facilita a localização do produto; Barras dietéticas > Barras dietéticas > Barras dietéticas > Barras dietéticas
+Público-alvo; Segmento de clientes ao qual o produto é direcionado; Adolescentes, pais, alunos de faculdade
+Público-alvo; Segmento de clientes ao qual o produto é direcionado; Adolescentes, pais, alunos de faculdade
+Público-alvo; Segmento de clientes ao qual o produto é direcionado; Adolescentes, pais, alunos de faculdade
+Público-alvo; Segmento de clientes ao qual o produto é direcionado; Adolescentes, pais, alunos de faculdade
+Público-alvo; Segmento de clientes ao qual o produto é direcionado; Adolescentes, pais, alunos de faculdade
+Número do modelo; Código identificador do modelo atribuído pelo fabricante; RXZER23
+Nome do modelo; Denominação comercial do modelo; MacBook Pro
+Fabricante; Empresa que produz o item; Nike, Procter & Gamble
+Ignorar oferta; Indica se a oferta não deverá ser exibida (Sim/Não); Sim
+Condição do Produto; Estado do item (Novo, Usado, Recondicionado etc.); Novo
+Nota de condição da oferta; Descrição livre de detalhes sobre a condição; Pequeno amassado no painel lateral esquerdo.
+Preço sugerido com impostos; Valor recomendado pelo lojista já incluindo tributos; 69
+Data de lançamento do lojista; Data em que o vendedor disponibilizou o produto; 2017-07-20
+Grupo de envio de mercadorias; Classe ou perfil de frete aplicado a esse produto; Produtos volumosos pesados, entrega de dispositivo de NCR grande
+Quantidade máxima de pedido; Quantidade máxima permitida por pedido de compra; 3
+A oferta pode ser enviada como presente por mensagem; Habilita o envio de mensagem de presente (VERDADEIRO/FALSO); VERDADEIRO
+A embalagem do presente está disponível; Habilita opção de embalagem para presente (VERDADEIRO/FALSO); VERDADEIRO
+Local da imagem principal; URL apontando para a imagem principal do produto; http://www.companyname.com/images/1250.offer.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Código NCM; Código da Nomenclatura Comum do Mercosul para classificação fiscal; 84717012
+Código EX da TIPI; Subcódigo de tipificação de produtos importados (TIPI); 01, 02
+Origem da mercadoria; Código de origem conforme legislação brasileira (0–8); 1
+Atividade da empresa para esse produto; Relação do vendedor com o produto (Fabricante, Distribuidor etc.); Distribuidor
+Tipo de Código de Situação Tributária; Regime tributário aplicado (por exemplo, ICMS, IPI); ICMS
+Grupo de envio de mercadorias; Classe ou perfil de frete aplicado a esse produto; Produtos volumosos pesados, entrega de dispositivo de NCR grande
+Quantidade máxima de pedido; Quantidade máxima permitida por pedido de compra; 3
+A oferta pode ser enviada como presente por mensagem; Habilita o envio de mensagem de presente (VERDADEIRO/FALSO); VERDADEIRO
+A embalagem do presente está disponível; Habilita opção de embalagem para presente (VERDADEIRO/FALSO); VERDADEIRO
+Local da imagem principal; URL apontando para a imagem principal do produto; http://www.companyname.com/images/1250.offer.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outra localização de imagem; URL de imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Código NCM; Código da Nomenclatura Comum do Mercosul para classificação fiscal; 84717012
+Código EX da TIPI; Subcódigo de tipificação de produtos importados (TIPI); 01, 02
+Origem da mercadoria; Código de origem conforme legislação brasileira (0–8); 1
+Atividade da empresa para esse produto; Relação do vendedor com o produto (Fabricante, Distribuidor etc.); Distribuidor
+Tipo de Código de Situação Tributária; Regime tributário aplicado (por exemplo, ICMS, IPI); ICMS
+Código de Situação da Operação do Simples Nacional (CSOSN); Código específico para produtos sob Simples Nacional; 102 - Tributada sem permissão de crédito
+Identificador do Processo ou ato Concessório; Número do processo fiscal ou concessório; 12345678ABCD
+Indicador da Origem do Processo; Órgão emissor do processo; SEFAZ
+Tipo de Classificação Fiscal; Categoria de tributação ou substituição; CEST
+Código Especificador da Substituição Tributária (CEST); Código CEST para enquadramento de ST; 1234567
+Bases Legais e Observações; Texto livre com fundamentação legal e observações; Código tributário 602.1614
+Código do canal de processamento (BR); Identificação do canal de vendas na Amazon Brasil; AMAZON_NA
+Quantidade (BR); Estoque disponível declarado para o Brasil; 152
+Tempo de processamento (BR); Prazo para expedição (dias úteis); 5
+Data de re-estoque (BR); Data prevista para novo estoque; 2020-05-05
+Inventário sempre disponível (BR); Indica se o inventário é virtualmente infinito (VERDADEIRO/FALSO); Desativado
+Preço padrão BRL (Vender na Amazon, BR); Preço base em reais para venda; 249.99
+Regra de precificação (Vender na Amazon, BR); Política de ajuste de preço; Regra do preço competitivo pela Amazon
+Preço mínimo permitido pelo vendedor (Vender na Amazon, BR); Limite inferior de preço em reais; 259.99
+Preço máximo permitido pelo vendedor (Vender na Amazon, BR); Limite superior de preço em reais; 259.99
+Data de término da venda (Vender na Amazon, BR); Data em que a oferta se encerra; 2017-07-01
+Data inicial de venda (Vender na Amazon, BR); Data em que a oferta começa; 2017-06-30
+Preço de venda BRL (Vender na Amazon, BR); Preço promocional em reais; 219.99
+Data de lançamento da oferta (Vender na Amazon, BR); Data oficial de lançamento da oferta; 2017-06-30
+Fim da data de venda (Vender na Amazon, BR); Data final para o preço promocional; 2017-07-01
+Descrição do Produto; Texto descritivo detalhado do item; Esta linda peça de decoração de parede é pintada à mão sobre uma tela …
+Tópico; Palavra ou frase de destaque para organização; Desenho floral com formatos de flores
+Tópico; Palavra ou frase de destaque para organização; Desenho floral com formatos de flores
+Tópico; Palavra ou frase de destaque para organização; Desenho floral com formatos de flores
+Tópico; Palavra ou frase de destaque para organização; Desenho floral com formatos de flores
+Tópico; Palavra ou frase de destaque para organização; Desenho floral com formatos de flores
+Palavras-chave de Pesquisa; Termos para otimização de busca interna; Calçados para esportes aquáticos, Derek Rose, Elétrico, Wi-Fi, Banana
+Palavras-chave de Pesquisa; Termos para otimização de busca interna; Calçados para esportes aquáticos, Derek Rose, Elétrico, Wi-Fi, Banana
+Palavras-chave de Pesquisa; Termos para otimização de busca interna; Calçados para esportes aquáticos, Derek Rose, Elétrico, Wi-Fi, Banana
+Palavras-chave de Pesquisa; Termos para otimização de busca interna; Calçados para esportes aquáticos, Derek Rose, Elétrico, Wi-Fi, Banana
+Palavras-chave de Pesquisa; Termos para otimização de busca interna; Calçados para esportes aquáticos, Derek Rose, Elétrico, Wi-Fi, Banana
+Características especiais; Propriedades únicas ou diferenciais; Para uso em lava-louças
+Características especiais; Propriedades únicas ou diferenciais; Para uso em lava-louças
+Características especiais; Propriedades únicas ou diferenciais; Para uso em lava-louças
+Características especiais; Propriedades únicas ou diferenciais; Para uso em lava-louças
+Características especiais; Propriedades únicas ou diferenciais; Para uso em lava-louças
+Estilo; Estilo ou design predominante; Art Deco
+Gênero do público-alvo; Sexo/identidade de mercado alvo; Masculino, Feminino, Unissex
+Material; Composição principal do produto; Plástico
+Material; Composição principal do produto; Plástico
+Material; Composição principal do produto; Plástico
+Material; Composição principal do produto; Plástico
+Material; Composição principal do produto; Plástico
+Quantidade de itens; Número total de unidades contidas no pacote; 5
+Quantidade de pacotes do item; Número de pacotes individuais no conjunto; 1
+Assunto; Tema ou tópico abordado pelo produto; Batman
+Cor; Cor predominante do item; Vermelho
+Tamanho; Dimensão ou porte do produto; Extra grande
+Valor decimal do diâmetro do item; Medida do diâmetro em valor numérico; 25
+Unidade de diâmetro do item; Unidade de medida do diâmetro; polegadas
+Tipo de metal; Material metálico principal; Bronze, Cobre platinado
+Tipo de metal; Material metálico principal; Bronze, Cobre platinado
+Tipo de metal; Material metálico principal; Bronze, Cobre platinado
+Tipo de metal; Material metálico principal; Bronze, Cobre platinado
+Tipo de metal; Material metálico principal; Bronze, Cobre platinado
+Ocasião; Evento ou situação para uso do produto; Aniversário, comemoração, casamento
+Ocasião; Evento ou situação para uso do produto; Aniversário, comemoração, casamento
+Ocasião; Evento ou situação para uso do produto; Aniversário, comemoração, casamento
+Ocasião; Evento ou situação para uso do produto; Aniversário, comemoração, casamento
+Ocasião; Evento ou situação para uso do produto; Aniversário, comemoração, casamento
+Número da peça; Código ou SKU do componente; RIV001
+Formato do item; Geometria ou configuração física; Redondo
+Tema; Motivo decorativo ou conceito; Esportivo
+Tema; Motivo decorativo ou conceito; Esportivo
+Tema; Motivo decorativo ou conceito; Esportivo
+Tema; Motivo decorativo ou conceito; Esportivo
+Tema; Motivo decorativo ou conceito; Esportivo
+Instruções de cuidados; Orientações de limpeza/manutenção; Lavar à mão
+Instruções de cuidados; Orientações de limpeza/manutenção; Lavar à mão
+Instruções de cuidados; Orientações de limpeza/manutenção; Lavar à mão
+Instruções de cuidados; Orientações de limpeza/manutenção; Lavar à mão
+Instruções de cuidados; Orientações de limpeza/manutenção; Lavar à mão
+Edição; Versão ou lançamento do produto; Edição do professor, versão integral
+Configuração; Especificação de sistema ou conjunto; Configuração AWD
+Fonte de energia; Tipo de energia utilizada; AC, DC, AC/DC, Energia elétrica
+Características do material; Propriedades do material; Compostável, biodegradável, inodoro, base vegetal
+Características do material; Propriedades do material; Compostável, biodegradável, inodoro, base vegetal
+Características do material; Propriedades do material; Compostável, biodegradável, inodoro, base vegetal
+Características do material; Propriedades do material; Compostável, biodegradável, inodoro, base vegetal
+Características do material; Propriedades do material; Compostável, biodegradável, inodoro, base vegetal
+É livre de algum tipo de substância?; Indica ausência de substâncias específicas; Livre de parabeno
+É livre de algum tipo de substância?; Indica ausência de substâncias específicas; Livre de parabeno
+É livre de algum tipo de substância?; Indica ausência de substâncias específicas; Livre de parabeno
+É livre de algum tipo de substância?; Indica ausência de substâncias específicas; Livre de parabeno
+É livre de algum tipo de substância?; Indica ausência de substâncias específicas; Livre de parabeno
+Profundidade da tela do item; Espessura ou profundidade frontal; 2.75, 3.00
+Unidade de profundidade da tela do item; Unidade de medida da profundidade; Centímetros, Milímetros
+Diâmetro da tela do item; Medida de largura circular; 2.75, 3.00
+Unidade de diâmetro da tela do item; Unidade de medida do diâmetro; Centímetros, Milímetros
+Altura da tela do item; Medida vertical; 1.8
+Unidade de altura da tela do item; Unidade de medida da altura; Centímetros, Milímetros
+Comprimento da tela do item; Largura horizontal; 5.7
+Unidade de comprimento da tela do item; Unidade de medida do comprimento; Centímetros, Milímetros
+Largura da tela do item; Medida de largura; 3.5
+Unidade de largura da tela do item; Unidade de medida da largura; Centímetros, Milímetros
+Sabor; Perfil de sabor; Extra Chocolate, Cereja, Chocolate, Baunilha
+Potência; Consumo ou fornecimento energético; 50
+Unidade de potência; Unidade de medida de potência; Watts
+Voltagem; Tensão elétrica suportada; 110, 220
+Unidade de voltagem; Unidade de medida de tensão; Volts
+Tipo de embalagem; Formato de embalagem; Embalagem padrão, Amazon Livre de Frustrações
+Estampa; Padrão visual aplicado; Floral, geométrico, de bolinhas
+Tipo de contagem de unidades; Método de contabilização; Contagem, Grama
+Contagem de unidades; Quantidade especificada; 5
+Data de lançamento do produto no site; Quando foi publicado online; 2017-07-20
+Usos específicos do produto; Indicação de aplicação; Dry Sanding, Pessoal, Empresarial, Amador
+Usos específicos do produto; Indicação de aplicação; Dry Sanding, Pessoal, Empresarial, Amador
+Usos específicos do produto; Indicação de aplicação; Dry Sanding, Pessoal, Empresarial, Amador
+Usos específicos do produto; Indicação de aplicação; Dry Sanding, Pessoal, Empresarial, Amador
+Usos específicos do produto; Indicação de aplicação; Dry Sanding, Pessoal, Empresarial, Amador
+Usos recomendados do produto; Sugestão de uso; Ciclismo, Interior, Água
+Usos recomendados do produto; Sugestão de uso; Ciclismo, Interior, Água
+Usos recomendados do produto; Sugestão de uso; Ciclismo, Interior, Água
+Usos recomendados do produto; Sugestão de uso; Ciclismo, Interior, Água
+Usos recomendados do produto; Sugestão de uso; Ciclismo, Interior, Água
+Aroma; Fragrância; Lavanda, Almíscar
+Aroma; Fragrância; Lavanda, Almíscar
+Aroma; Fragrância; Lavanda, Almíscar
+Aroma; Fragrância; Lavanda, Almíscar
+Aroma; Fragrância; Lavanda, Almíscar
+Material de recipiente; Composição do estojo; Vidro, Metal, Policarbonato
+Tipo de recipiente; Formato do recipiente; Garrafa, Lata, Caixa
+Recurso de enfeite; Acessórios decorativos; Encantos, trança, penas
+Recurso de enfeite; Acessórios decorativos; Encantos, trança, penas
+Recurso de enfeite; Acessórios decorativos; Encantos, trança, penas
+Recurso de enfeite; Acessórios decorativos; Encantos, trança, penas
+Recurso de enfeite; Acessórios decorativos; Encantos, trança, penas
+Gama de comprimento; Variedade de comprimentos; 24–60" long
+Gama de comprimento; Variedade de comprimentos; 24–60" long
+Gama de comprimento; Variedade de comprimentos; 24–60" long
+Gama de comprimento; Variedade de comprimentos; 24–60" long
+Gama de comprimento; Variedade de comprimentos; 24–60" long
+Gama de larguras; Variedade de larguras; 24–60" wide
+Gama de larguras; Variedade de larguras; 24–60" wide
+Gama de larguras; Variedade de larguras; 24–60" wide
+Gama de larguras; Variedade de larguras; 24–60" wide
+Gama de larguras; Variedade de larguras; 24–60" wide
+Estações; Período do ano de uso; Verão
+Estações; Período do ano de uso; Verão
+Estações; Período do ano de uso; Verão
+Estações; Período do ano de uso; Verão
+Estações; Período do ano de uso; Verão
+Utilização interior, exterior; Indica uso interno ou externo; interior
+Utilização interior, exterior; Indica uso interno ou externo; interior
+Tema numérico; Código ou série temática; Número 1
+Quantidade de pavios; Número de pavios em velas; 3
+Altura do artigo da base ao topo; Medida vertical total; 30
+Unidade de altura do artigo; Unidade de medida da altura; Polegadas, centímetros
+Largura do artigo na base; Medida de largura na base; 8
+Unidade de largura do artigo; Unidade de medida da largura; Polegadas, centímetros
+Tipo de vela; Categoria de vela; Vela de Recipiente
+Tipo de Embalagem; Categoria de embalagem; Bolsa, Caixa, Envelope, Manga
+Tem Pavilhão Estaladiço; Indica suportes extras (Sim/Não); Sim, Não
+Altura do Pacote Principal; Medida vertical da embalagem; 32,4
+Unidade de Altura do Pacote Principal; Unidade de medida da altura; Polegadas
+Comprimento do Pacote Principal; Medida longitudinal da embalagem; 32,4
+Unidade de Comprimento do Pacote Principal; Unidade de medida do comprimento; Polegadas
+Largura do Pacote Principal; Medida lateral da embalagem; 32,4
+Unidade de Largura do Pacote Principal; Unidade de medida da largura; Polegadas
+Peso do Pacote Principal; Massa total da embalagem; 25,3
+Unidade de Peso do Pacote Principal; Unidade de medida do peso; Libras
+Nível de hierarquia; Posição na árvore de variações; Principal
+Tipo de relação com o secundário; Modo de variação (cor, tamanho etc.); acessório
+SKU do produto pai; Identificador do item principal; ABC123
+Nome do tema de variação; Nome da característica de variação; NOME_DO_TAMANHO/NOME_DA_COR
+País de origem; Local de fabricação; China, Japão, Estados Unidos
+Baterias são necessárias?; Se requer baterias para funcionar (Sim/Não); Sim
+Baterias incluídas?; Se as baterias acompanham o produto (Sim/Não); Sim
+Composição da célula da pilha; Química da bateria fornecida; NiMH, Íon-lítio
+Composição da Célula da Bateria Diferente das Listadas; Química adicional; Óxido de Prata (Ag2O)
+Código IEC da Bateria; Padrão internacional de bateria; CR2320
+Peso da bateria; Massa da bateria; 2.5
+Unidade de peso da bateria; Unidade de medida do peso; Gramas
+Número de baterias; Quantidade de baterias fornecidas; 1, 4
+Tipo de bateria; Categoria de bateria; 12V
+Número de baterias; Quantidade de baterias fornecidas; 1, 4
+Tipo de bateria; Categoria de bateria; 12V
+Número de baterias; Quantidade de baterias fornecidas; 1, 4
+Tipo de bateria; Categoria de bateria; 12V
+Número de baterias; Quantidade de baterias fornecidas; 1, 4
+Tipo de bateria; Categoria de bateria; 12V
+Número de baterias; Quantidade de baterias fornecidas; 1, 4
+Tipo de bateria; Categoria de bateria; 12V
+Número de células de metal de lítio; Quantidade de células de Li-metal; 7
+Número de células de íon-lítio; Quantidade de células de Li-ion; 7
+Conteúdo de energia da bateria de lítio; Capacidade energética; 2.6
+Unidade de conteúdo de energia da bateria de lítio; Unidade de energia; Watt-hora
+Embalagem da bateria de lítio; Modo de acondicionamento; Pilhas contidas no equipamento
+Peso da bateria de lítio; Massa da bateria de lítio; 0.5, 0.03
+Unidade de peso da bateria de lítio; Unidade de medida do peso; Gramas
+Regulamentações de produtos perigosos; Tipos de regulamentos aplicáveis; GHS, Transporte, Armazenamento
+Regulamentações de produtos perigosos; Tipos de regulamentos aplicáveis; GHS, Transporte, Armazenamento
+Regulamentações de produtos perigosos; Tipos de regulamentos aplicáveis; GHS, Transporte, Armazenamento
+Regulamentações de produtos perigosos; Tipos de regulamentos aplicáveis; GHS, Transporte, Armazenamento
+Regulamentações de produtos perigosos; Tipos de regulamentos aplicáveis; GHS, Transporte, Armazenamento
+Classe de GHS; Categoria de perigo segundo o GHS; Explosivo
+Classe de GHS; Categoria de perigo segundo o GHS; Explosivo
+Classe de GHS; Categoria de perigo segundo o GHS; Explosivo
+Classe de GHS; Categoria de perigo segundo o GHS; Explosivo
+Classe de GHS; Categoria de perigo segundo o GHS; Explosivo
+Aspecto de materiais perigosos; Característica física do material; ID regulamentar UN
+Materiais perigosos; Nome da substância perigosa; UN1993
+URL da folha de dados de segurança (SDS ou MSDS); Link para ficha de segurança; www.safetysheetsRus.com/hazardous_substance/msds.pdf
+Peso do item; Massa líquida do produto; 30, 1.5
+Unidade de peso do item; Unidade de medida do peso; Libras, gramas
+Certificação de teste externa; Certificações obtidas; INMETRO: 0000; ANATEL: 0000; Não aplicável
+Certificação de teste externa; Certificações obtidas; INMETRO: 0000; ANATEL: 0000; Não aplicável
+E-mail ou Endereço Eletrônico da Pessoa Responsável; Contato do responsável técnico; rsp-email@example.com
+Localização da fonte de mídia de conformidade (pt_BR, Guia de aplicação); URL do guia de aplicação; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Certificado de análise); URL do certificado de análise; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Certificado de conformidade); URL do certificado de conformidade; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Guia de compatibilidade); URL do guia de compatibilidade; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Autorização de uso emergencial); URL da autorização emergencial; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Alteração da autorização de uso emergencial); URL da alteração; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Manual de instalação); URL do manual de instalação; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Instruções de uso); URL das instruções de uso; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Ficha técnica do paciente); URL da ficha técnica do paciente; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Ficha técnica do fornecedor); URL da ficha técnica do fornecedor; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Folha de dados de segurança); URL da folha de dados de segurança; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Informações de segurança); URL das informações de segurança; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Ficha de especificações); URL da ficha de especificações; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Guia de solução de problemas); URL do guia de solução de problemas; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Guia do usuário); URL do guia do usuário; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Manual do usuário); URL do manual do usuário; http://example.eg/sds_1.pdf
+Localização da fonte de mídia de conformidade (pt_BR, Garantia); URL da garantia; http://example.eg/sds_1.pdf
+Atestado de Segurança GPSR; Confirmação de conformidade com GPSR; Sim
+E-mail ou endereço eletrônico do fabricante; Contato de suporte do fabricante; abc@example.com
+Tem Múltiplos Componentes Alimentados por Bateria; Indica componentes com bateria (Sim/Não); Sim
+Envio Global; Disponibilidade para frete internacional (Sim/Não); Sim
+Contém Bateria ou Célula; Se há bateria interna (Sim/Não); Sim
+Bateria Contém Líquido Livre Não Absorvido; Se possui eletrólito livre (Sim/Não); Sim
+A Bateria é Antiderramamento; Se a bateria é antiderramamento (Sim/Não); Sim
+Embalagem de Bateria Não de Lítio; Tipo de embalagem de baterias não-lítio; Apenas Baterias
+Tem Bateria Substituível; Se a bateria pode ser trocada pelo usuário (Sim/Não); Sim
+Conteúdo de Energia da Bateria Não de Lítio; Capacidade de energia (não-lítio); 2,6
+Unidade de Energia de Bateria Não de Lítio; Unidade de energia; Watt-hora
+Tem Menos de 30 Por Cento de Carga; Se a carga é inferior a 30% (Sim/Não); Sim
+Tipo de Dispositivo de Instalação da Bateria; Método de fixação da bateria; Instalado No Vaso
+É Produto de Fonte OEM; Se é fornecido pela OEM original (Sim/Não); Sim
+ghs_chemical_h_code[marketplace_id=A2Q3Y263D00KWC]#1.value; Código H de perigo químico; 1
+ghs_chemical_h_code[marketplace_id=A2Q3Y263D00KWC]#2.value; Código H de perigo químico; 4
+ghs_chemical_h_code[marketplace_id=A2Q3Y263D00KWC]#3.value; Código H de perigo químico; 1
+ghs_chemical_h_code[marketplace_id=A2Q3Y263D00KWC]#4.value; Código H de perigo químico; 4
+ghs_chemical_h_code[marketplace_id=A2Q3Y263D00KWC]#5.value; Código H de perigo químico; 1
+URL da imagem principal; Link para imagem principal; http://www.companyname.com/images/1250.main.jpg
+Outro URL da imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL da imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+Outro URL de imagem; Link para imagem adicional; http://www.companyname.com/images/1250.other1.jpg
+URL da imagem de amostra; Link para imagem de amostra; http://www.companyname.com/images/1250.swatch.jpg
+Comprimento do pacote; Medida de comprimento da embalagem; 10
+Unidade de comprimento do pacote; Unidade de medida do comprimento; Polegadas
+Largura do pacote; Medida de largura da embalagem; 2
+Unidade de largura do pacote; Unidade de medida da largura; Polegadas
+Altura do pacote; Medida de altura da embalagem; 2.7
+Unidade de altura do pacote; Unidade de medida da altura; Polegadas
+Peso do pacote; Massa do pacote; 0.65
+Unidade de peso do pacote; Unidade de medida do peso; Libras
+Peso da tela do item; Massa líquida da tela; 20, 50
+Unidade de peso da tela do item; Unidade de medida do peso; Onças, libras
+Camadas do pacote mestre por quantidade de paletes; Número de camadas por pallet; 5
+Pacotes mestre por quantidade de camada; Pacotes por camada do pallet; 9
