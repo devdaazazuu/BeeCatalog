@@ -1,8 +1,5 @@
-venv/
-.venv/
-db.sqlite3
-*.sqlite3
-.env
-__pycache__/
-*.pyc
-.DS_Store
+*.txt
+*_pycache_
+*migrations
+ds.aqlite3
+venv
