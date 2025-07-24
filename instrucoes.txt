@@ -1,0 +1,20 @@
+Você deve acessar a pasta BeeCatalogBackend, deletar o venv e depois criar um novo.
+
+python venv venv
+
+Após isso você ativa o venv:
+
+venv\scripts\activate
+
+E depois instala as dependencias:
+
+pip install requirements.txt
+
+Após isso você inicia o servidor:
+
+python manage.py runserver
+
+
+Na pasta BeeCatalogFrontend você apenas precisa iniciar:
+
+npm run dev
