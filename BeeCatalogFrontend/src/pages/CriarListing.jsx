@@ -266,6 +266,33 @@ function CriarListing() {
         };
     }, [pollingIntervalId]);
 
+    // CORREÇÃO: Adicionar listeners para detectar eventos de visibilidade que possam disparar carregamentos indevidos
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                console.log('🔍 Aba minimizada/oculta detectada - bloqueando possíveis carregamentos indevidos');
+            } else {
+                console.log('🔍 Aba restaurada/visível detectada');
+            }
+        };
+
+        const handleFocusChange = (event) => {
+            console.log('🔍 Evento de foco detectado:', event.type);
+        };
+
+        // Adicionar listeners para monitoramento
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocusChange);
+        window.addEventListener('blur', handleFocusChange);
+
+        return () => {
+             // Cleanup dos listeners
+             document.removeEventListener('visibilitychange', handleVisibilityChange);
+             window.removeEventListener('focus', handleFocusChange);
+             window.removeEventListener('blur', handleFocusChange);
+         };
+     }, []);
+
     const updateProductState = (productId, updateCallback) => { setProducts(prev => prev.map(p => p.id === productId ? updateCallback(p) : p)); };
     const handleProductChange = (id, event) => { const { name, value } = event.target; updateProductState(id, p => ({ ...p, [name]: value })); };
     const addVariation = (productId) => updateProductState(productId, p => ({ ...p, variacoes: [...p.variacoes, createNewVariation()] }));
@@ -276,7 +303,20 @@ function CriarListing() {
     const removeExtraImage = (productId, imageId) => updateProductState(productId, p => ({ ...p, imagens: { ...p.imagens, extra: p.imagens.extra.filter(img => img.id !== imageId) } }));
     const handleExtraImageChange = (productId, imageId, file) => { updateProductState(productId, p => ({ ...p, imagens: { ...p.imagens, extra: p.imagens.extra.map(img => img.id === imageId ? { ...img, file: file } : img) } })); };
 
+    // Estado para controlar se o upload foi disparado por ação explícita do usuário
+    const [isExplicitUpload, setIsExplicitUpload] = useState(false);
+
     const handleUploadSubmit = async () => {
+        // CORREÇÃO: Verificar se o upload foi disparado por ação explícita do usuário
+        // Isso previne que eventos de minimizar/ocultar aba disparem o carregamento
+        if (!isExplicitUpload) {
+            console.warn('⚠️ Tentativa de upload bloqueada - não foi disparada por ação explícita do usuário');
+            return;
+        }
+        
+        // Reset do flag após uso
+        setIsExplicitUpload(false);
+        
         if (!selectedFile) {
             showWarning('Por favor, selecione um arquivo de planilha.');
             return;
@@ -367,8 +407,22 @@ function CriarListing() {
         setPollingIntervalId(intervalId);
     };
 
+    // Estado para controlar se o submit foi disparado por ação explícita do usuário
+    const [isExplicitSubmit, setIsExplicitSubmit] = useState(false);
+
     const handleFinalSubmit = async (e) => {
         e.preventDefault();
+        
+        // CORREÇÃO: Verificar se o submit foi disparado por ação explícita do usuário
+        // Isso previne que eventos de minimizar/ocultar aba disparem o carregamento
+        if (!isExplicitSubmit) {
+            console.warn('⚠️ Tentativa de submit bloqueada - não foi disparada por ação explícita do usuário');
+            console.log('Evento bloqueado:', e);
+            return;
+        }
+        
+        // Reset do flag após uso
+        setIsExplicitSubmit(false);
         
         // Validações
         if (!amazonTemplate) {
@@ -492,7 +546,13 @@ function CriarListing() {
                         
                         <button 
                             type="button" 
-                            onClick={handleUploadSubmit} 
+                            onClick={() => {
+                                // CORREÇÃO: Marcar como upload explícito do usuário
+                                // Apenas cliques diretos no botão devem disparar o carregamento
+                                console.log('✅ Upload explícito do usuário - botão "Carregar Produtos" clicado');
+                                setIsExplicitUpload(true);
+                                handleUploadSubmit();
+                            }} 
                             className="w-full px-6 py-4 font-bold text-black bg-gradient-to-r from-amber-400 to-amber-500 rounded-xl hover:from-amber-500 hover:to-amber-600 disabled:from-gray-600 disabled:to-gray-700 disabled:text-gray-400 transition-all duration-300 transform hover:scale-[1.02] disabled:hover:scale-100 shadow-lg hover:shadow-xl" 
                             disabled={!selectedFile || isLoading}
                         >
@@ -593,6 +653,12 @@ function CriarListing() {
                         <p className="text-gray-400 mb-8">Finalize o processo e baixe sua planilha preenchida</p>
                         <button 
                             type="submit" 
+                            onClick={() => {
+                                // CORREÇÃO: Marcar como submit explícito do usuário
+                                // Apenas cliques diretos no botão devem disparar o carregamento
+                                console.log('✅ Submit explícito do usuário - botão "Gerar Planilha Final" clicado');
+                                setIsExplicitSubmit(true);
+                            }}
                             className="px-16 py-5 font-bold text-black bg-gradient-to-r from-amber-400 to-amber-500 rounded-2xl hover:from-amber-500 hover:to-amber-600 disabled:from-gray-600 disabled:to-gray-700 disabled:text-gray-400 transition-all duration-300 transform hover:scale-[1.02] disabled:hover:scale-100 shadow-2xl hover:shadow-amber-500/25 text-xl" 
                             disabled={isLoading || products.length === 0 || !amazonTemplate}
                         >

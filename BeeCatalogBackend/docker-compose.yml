@@ -1,0 +1,186 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: beecatalog_postgres
+    environment:
+      POSTGRES_DB: beecatalog
+      POSTGRES_USER: beecatalog_user
+      POSTGRES_PASSWORD: beecatalog_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+    command: |
+      postgres 
+        -c shared_buffers=256MB 
+        -c effective_cache_size=1GB 
+        -c work_mem=4MB 
+        -c maintenance_work_mem=64MB 
+        -c checkpoint_completion_target=0.9 
+        -c wal_buffers=16MB 
+        -c max_connections=100 
+        -c log_min_duration_statement=1000 
+        -c log_checkpoints=on 
+        -c log_connections=on 
+        -c log_disconnections=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beecatalog_user -d beecatalog"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: beecatalog_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+
+  # Prometheus for Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: beecatalog_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+
+  # Grafana for Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: beecatalog_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+    depends_on:
+      - prometheus
+
+  # Redis Exporter for Prometheus
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: beecatalog_redis_exporter
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+    depends_on:
+      - redis
+
+  # PostgreSQL Exporter for Prometheus
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: beecatalog_postgres_exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://beecatalog_user:beecatalog_password@postgres:5432/beecatalog?sslmode=disable"
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+    depends_on:
+      - postgres
+
+  # Celery Flower for Task Monitoring
+  flower:
+    build: .
+    container_name: beecatalog_flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: celery -A backbeecatalog flower --port=5555
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+    depends_on:
+      - redis
+      - postgres
+
+  # PgBouncer for Connection Pooling
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: beecatalog_pgbouncer
+    ports:
+      - "6432:6432"
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: 5432
+      DATABASES_USER: beecatalog_user
+      DATABASES_PASSWORD: beecatalog_password
+      DATABASES_DBNAME: beecatalog
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      SERVER_LIFETIME: 3600
+      SERVER_IDLE_TIMEOUT: 600
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
+    restart: unless-stopped
+    networks:
+      - beecatalog_network
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  beecatalog_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

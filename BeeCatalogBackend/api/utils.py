@@ -14,6 +14,9 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Dict, FrozenSet, List, NamedTuple, Optional, Tuple, Union
 
+# Importar sistema de cache inteligente
+from .cache_utils import ai_cache, get_or_cache_ai_response, batch_ai_requests
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -452,7 +455,7 @@ def escolher_com_ia(product_data: dict, fields_to_fill: List[Dict], assumed_item
             "- {critical_context}"
             "- Para a maioria dos campos, retorne uma única string como valor.\n"
             "- {multi_value_context}"
-            "- CAMPOS DE UNIDADE: NUNCA preencha automaticamente campos que contenham 'Unidade' no nome (ex: 'Unidade de altura', 'Unidade de peso', etc.) a menos que seja explicitamente fornecido no contexto do produto. Para campos de unidade sem informação específica, sempre use 'nan'.\n"
+            "- CAMPOS DE UNIDADE: NUNCA preencha automaticamente os seguintes campos de unidade específicos: 'Unidade de altura', 'Unidade de comprimento', 'Unidade da largura', 'Unidade de Altura do Pacote Principal', 'Unidade de Comprimento do Pacote Principal', 'Unidade de Largura do Pacote Principal', 'Unidade de Peso do Pacote Principal', 'Unidade da profundidade do artigo', 'Unidade de altura do artigo', 'Unidade de largura do artigo'. Para estes campos, sempre use 'nan'. Para outros campos de unidade (como 'Unidade de comprimento do item', 'Unidade de largura do item', 'Unidade de altura do item'), preencha apenas se explicitamente fornecido no contexto.\n"
             "- Se nenhuma opção for adequada ou se a informação for desconhecida, use a string 'nan'.\n\n"
             "--- DADOS DO PRODUTO E CONTEXTO ---\nProduto de Referência: '{product}'\n\nContexto Completo:\n{context}\n\n"
             "--- VALORES DE REFERÊNCIA ---\n{assumed_values}\n\n"
@@ -470,18 +473,36 @@ def escolher_com_ia(product_data: dict, fields_to_fill: List[Dict], assumed_item
         multi_value_context=multi_value_context,
         critical_context=critical_context
     )
-    response = get_model(temperature=0.2).invoke(prompt)
-    response_content = response.content.strip()
-    total_tokens = response.response_metadata.get('usage', {}).get('total_tokens', 0)
+    # Usar cache inteligente para a resposta da IA
+    def call_ai_function():
+        response = get_model(temperature=0.2).invoke(prompt)
+        response_content = response.content.strip()
+        total_tokens = response.response_metadata.get('usage', {}).get('total_tokens', 0)
+        
+        try:
+            json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+            if json_match:
+                ai_choices = json.loads(json_match.group(0))
+                return {'choices': ai_choices, 'tokens': total_tokens}
+            return {'choices': {}, 'tokens': total_tokens}
+        except json.JSONDecodeError:
+            return {'choices': {}, 'tokens': total_tokens}
     
-    try:
-        json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
-        if json_match:
-            ai_choices = json.loads(json_match.group(0))
-            return ai_choices, total_tokens
-        return {}, total_tokens
-    except json.JSONDecodeError:
-        return {}, total_tokens
+    # Contexto para cache (sem incluir o prompt completo para economizar espaço)
+    cache_context = {
+        'product_title': titulo_produto,
+        'fields_count': len(fields_for_ai_batch),
+        'field_names': [f['field_name'] for f in fields_for_ai_batch],
+        'assumed_values': assumed_values
+    }
+    
+    cached_result = get_or_cache_ai_response(
+        prompt=prompt[:500] + "...",  # Usar apenas início do prompt para cache
+        context=cache_context,
+        ai_function=call_ai_function
+    )
+    
+    return cached_result['choices'], cached_result['tokens']
 
 def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict, retriever_context_info: str, campos_criticos: set, persona_especialista: str):
     print(f"\nINFO: Processando o Chunk '{chunk_name}'...")
@@ -513,10 +534,26 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict
     )
     nomes_l4_relevantes = []
     try:
-        modelo_triagem = get_model(temperature=0.2)
-        resposta_triagem_raw = modelo_triagem.invoke(prompt_triagem).content.strip()
-        json_match_triagem = re.search(r'\{.*\}', resposta_triagem_raw, re.DOTALL)
-        nomes_l4_relevantes = json.loads(json_match_triagem.group(0))['campos_relevantes']
+        # Usar cache inteligente para triagem
+        def call_triagem_ai():
+            modelo_triagem = get_model(temperature=0.2)
+            resposta_triagem_raw = modelo_triagem.invoke(prompt_triagem).content.strip()
+            json_match_triagem = re.search(r'\{.*\}', resposta_triagem_raw, re.DOTALL)
+            return json.loads(json_match_triagem.group(0))
+        
+        triagem_context = {
+            'product_title': titulo_produto,
+            'campos_count': len(nomes_l4_dos_campos_vazios),
+            'campos_names': nomes_l4_dos_campos_vazios
+        }
+        
+        triagem_result = get_or_cache_ai_response(
+            prompt=prompt_triagem,
+            context=triagem_context,
+            ai_function=call_triagem_ai
+        )
+        
+        nomes_l4_relevantes = triagem_result['campos_relevantes']
         print(f"  -> Triagem concluída. Grupos de campos relevantes identificados: {nomes_l4_relevantes}")
     except (AttributeError, json.JSONDecodeError, KeyError) as e:
         print(f"  -> AVISO: Não foi possível determinar os campos relevantes na triagem ({e}). O preenchimento seguirá sem o filtro de relevância.")
@@ -552,7 +589,7 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict
         "3.  **SAÍDA EXCLUSIVAMENTE EM JSON:** Responda apenas com um objeto JSON válido, sem texto adicional.\n"
         "4.  **CHAVES EXATAS:** Use exatamente os nomes dos campos fornecidos como chaves no JSON.\n"
         "5.  **VALORES EM PORTUGUÊS BRASILEIRO.**\n"
-        "6.  **CAMPOS DE UNIDADE:** NUNCA preencha automaticamente campos que contenham 'Unidade' no nome (ex: 'Unidade de altura', 'Unidade de peso', etc.) a menos que seja explicitamente fornecido no contexto do produto. Para campos de unidade sem informação específica, sempre use 'nan'.\n"
+        "6.  **CAMPOS DE UNIDADE:** NUNCA preencha automaticamente os seguintes campos de unidade específicos: 'Unidade de altura', 'Unidade de comprimento', 'Unidade da largura', 'Unidade de Altura do Pacote Principal', 'Unidade de Comprimento do Pacote Principal', 'Unidade de Largura do Pacote Principal', 'Unidade de Peso do Pacote Principal', 'Unidade da profundidade do artigo', 'Unidade de altura do artigo', 'Unidade de largura do artigo'. Para estes campos, sempre use 'nan'. Para outros campos de unidade (como 'Unidade de comprimento do item', 'Unidade de largura do item', 'Unidade de altura do item'), preencha apenas se explicitamente fornecido no contexto.\n"
         "7.  **CAMPOS CRÍTICOS:** {contexto_critico}\n\n"
         "### DADOS PARA ANÁLISE\n"
         "**Produto de Referência:**\n`{titulo_produto}`\n\n"
@@ -570,14 +607,32 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict
     )
     
     try:
-        resposta_ia = get_model(temperature=0.2).invoke(prompt_final)
-        response_content = resposta_ia.content.strip()
-        json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
-        if not json_match:
-            print(f"AVISO: Nenhum JSON encontrado na resposta para o chunk '{chunk_name}'.")
+        # Usar cache inteligente para preenchimento final
+        def call_final_ai():
+            resposta_ia = get_model(temperature=0.2).invoke(prompt_final)
+            response_content = resposta_ia.content.strip()
+            json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+            if not json_match:
+                return {}
+            return json.loads(json_match.group(0))
+        
+        final_context = {
+            'product_title': titulo_produto,
+            'chunk_name': chunk_name,
+            'campos_count': len(campos_para_preencher),
+            'campos_names': [campo['cabecalho_l5'] for campo in campos_para_preencher],
+            'campos_criticos': list(campos_criticos)
+        }
+        
+        ai_choices = get_or_cache_ai_response(
+            prompt=prompt_final[:1000] + "...",  # Usar apenas início do prompt para cache
+            context=final_context,
+            ai_function=call_final_ai
+        )
+        
+        if not ai_choices:
+            print(f"AVISO: Nenhum resultado válido da IA para o chunk '{chunk_name}'.")
             return {}
-
-        ai_choices = json.loads(json_match.group(0))
         return ai_choices
 
     except json.JSONDecodeError:
@@ -909,6 +964,230 @@ def set_cell_value(ws, row, header_map, header_name, value):
     col_index = header_map.get(header_name)
     if col_index: ws.cell(row=row, column=col_index, value=value)
     else: pass
+
+# ===== FUNÇÕES OTIMIZADAS PARA PROCESSAMENTO EM LOTE =====
+
+def batch_process_main_content(products_data: list, batch_size: int = 5) -> dict:
+    """
+    Processa múltiplos produtos em lote para geração de conteúdo principal.
+    
+    Args:
+        products_data: Lista de dados dos produtos
+        batch_size: Tamanho do lote para processamento
+    
+    Returns:
+        Dicionário mapeando índice do produto para o conteúdo gerado
+    """
+    print(f"INFO: Iniciando processamento em lote de {len(products_data)} produtos (lotes de {batch_size})")
+    
+    # Preparar requisições para processamento em lote
+    requests = []
+    for i, product_data in enumerate(products_data):
+        product_context = format_product_context(product_data)
+        prompt = f"Gerar conteúdo principal para: {product_context}"
+        
+        requests.append({
+            'prompt': prompt,
+            'context': {
+                'product_index': i,
+                'product_title': product_data.get('titulo', f'Produto {i}'),
+                'product_data': product_data
+            }
+        })
+    
+    # Processar em lotes usando cache inteligente
+    def batch_ai_function(batch_requests):
+        results = []
+        main_ia_chain = get_main_ia_chain()
+        
+        for request in batch_requests:
+            try:
+                product_context = format_product_context(request['context']['product_data'])
+                parsed_content = main_ia_chain.invoke({"product_context": product_context})
+                data_to_return = parsed_content.dict() if hasattr(parsed_content, 'dict') else parsed_content
+                results.append(data_to_return)
+            except Exception as e:
+                print(f"Erro ao processar produto {request['context']['product_index']}: {e}")
+                results.append({})
+        
+        return results
+    
+    # Executar processamento em lote
+    batch_results = batch_ai_requests(requests, batch_ai_function, batch_size)
+    
+    # Organizar resultados por índice do produto
+    results_map = {}
+    for i, result in enumerate(batch_results):
+        results_map[i] = result if result is not None else {}
+    
+    print(f"INFO: Processamento em lote concluído. {len(results_map)} produtos processados.")
+    return results_map
+
+def batch_process_field_choices(products_data: list, temp_file_path: str, batch_size: int = 3) -> dict:
+    """
+    Processa múltiplos produtos em lote para escolha de opções de campos.
+    
+    Args:
+        products_data: Lista de dados dos produtos
+        temp_file_path: Caminho do arquivo temporário da planilha
+        batch_size: Tamanho do lote para processamento
+    
+    Returns:
+        Dicionário mapeando índice do produto para as escolhas de campos
+    """
+    print(f"INFO: Iniciando processamento em lote de escolhas de campos para {len(products_data)} produtos")
+    
+    wb = None
+    try:
+        wb = load_workbook(filename=temp_file_path, keep_vba=True)
+        ws = wb["Modelo"]
+        field_options = coletar_opcoes_campo(wb, "Modelo", 7)
+        multi_value_fields = identificar_campos_multi_valor(ws)
+        vectorstore = get_vectorstore()
+        retriever = vectorstore.as_retriever()
+        
+        # Preparar campos para IA
+        fields_for_ai_batch = [
+            {"field_name": name, "options": opts, "multi_value": name in multi_value_fields, "is_critical": name in campos_criticos}
+            for name, campo_obj in field_options.items()
+            if (opts := [o for o in campo_obj['options'] if o and o.lower() != 'nan'])
+        ]
+        
+        if not fields_for_ai_batch:
+            print("INFO: Nenhum campo de seleção para processar em lote.")
+            return {i: {} for i in range(len(products_data))}
+        
+        # Preparar requisições para processamento em lote
+        requests = []
+        for i, product_data in enumerate(products_data):
+            titulo_produto = product_data.get('titulo', f'Produto {i}')
+            
+            requests.append({
+                'prompt': f"Escolher opções para produto: {titulo_produto}",
+                'context': {
+                    'product_index': i,
+                    'product_data': product_data,
+                    'fields_for_ai_batch': fields_for_ai_batch
+                }
+            })
+        
+        # Processar em lotes
+        def batch_choices_ai_function(batch_requests):
+            results = []
+            for request in batch_requests:
+                try:
+                    product_data = request['context']['product_data']
+                    ai_choices, _ = escolher_com_ia(product_data, fields_for_ai_batch, frozenset(), retriever)
+                    results.append(ai_choices)
+                except Exception as e:
+                    print(f"Erro ao processar escolhas para produto {request['context']['product_index']}: {e}")
+                    results.append({})
+            return results
+        
+        batch_results = batch_ai_requests(requests, batch_choices_ai_function, batch_size)
+        
+        # Organizar resultados
+        results_map = {}
+        for i, result in enumerate(batch_results):
+            results_map[i] = result if result is not None else {}
+        
+        print(f"INFO: Processamento em lote de escolhas concluído. {len(results_map)} produtos processados.")
+        return results_map
+        
+    except Exception as e:
+        print(f"ERRO no processamento em lote de escolhas: {e}")
+        return {i: {} for i in range(len(products_data))}
+    finally:
+        if wb:
+            wb.close()
+
+def batch_process_chunks(products_data: list, temp_file_path: str, campos_criticos_list: list, persona: str, batch_size: int = 3) -> dict:
+    """
+    Processa múltiplos produtos em lote para preenchimento de chunks.
+    
+    Args:
+        products_data: Lista de dados dos produtos
+        temp_file_path: Caminho do arquivo temporário da planilha
+        campos_criticos_list: Lista de campos críticos
+        persona: Persona do especialista
+        batch_size: Tamanho do lote para processamento
+    
+    Returns:
+        Dicionário mapeando (product_index, chunk_name) para os dados preenchidos
+    """
+    print(f"INFO: Iniciando processamento em lote de chunks para {len(products_data)} produtos")
+    
+    wb = None
+    try:
+        wb = load_workbook(filename=temp_file_path, keep_vba=True)
+        ws = wb["Modelo"]
+        chunks = mapear_chunks_da_planilha(ws)
+        vectorstore = get_vectorstore()
+        retriever = vectorstore.as_retriever()
+        campos_criticos = set(campos_criticos_list)
+        
+        results_map = {}
+        
+        # Processar cada chunk separadamente em lotes
+        for chunk_name, chunk_data in chunks.items():
+            print(f"INFO: Processando chunk '{chunk_name}' em lote...")
+            
+            # Preparar requisições para este chunk
+            requests = []
+            for i, product_data in enumerate(products_data):
+                titulo_produto = product_data.get('titulo', f'Produto {i}')
+                product_context_str = format_product_context(product_data)
+                retriever_context_info = "Contexto da base de conhecimento..."
+                
+                requests.append({
+                    'prompt': f"Processar chunk {chunk_name} para produto: {titulo_produto}",
+                    'context': {
+                        'product_index': i,
+                        'chunk_name': chunk_name,
+                        'product_data': product_data,
+                        'chunk_data': chunk_data.to_dict(),
+                        'retriever_context_info': retriever_context_info,
+                        'campos_criticos': campos_criticos,
+                        'persona': persona
+                    }
+                })
+            
+            # Processar em lotes
+            def batch_chunk_ai_function(batch_requests):
+                results = []
+                for request in batch_requests:
+                    try:
+                        ctx = request['context']
+                        result = processar_chunk_com_ia(
+                            ctx['chunk_name'],
+                            ctx['chunk_data'],
+                            ctx['product_data'],
+                            ctx['retriever_context_info'],
+                            ctx['campos_criticos'],
+                            ctx['persona']
+                        )
+                        results.append(result)
+                    except Exception as e:
+                        print(f"Erro ao processar chunk {ctx['chunk_name']} para produto {ctx['product_index']}: {e}")
+                        results.append({})
+                return results
+            
+            batch_results = batch_ai_requests(requests, batch_chunk_ai_function, batch_size)
+            
+            # Armazenar resultados
+            for i, result in enumerate(batch_results):
+                key = (i, chunk_name)
+                results_map[key] = result if result is not None else {}
+        
+        print(f"INFO: Processamento em lote de chunks concluído. {len(results_map)} resultados gerados.")
+        return results_map
+        
+    except Exception as e:
+        print(f"ERRO no processamento em lote de chunks: {e}")
+        return {}
+    finally:
+        if wb:
+            wb.close()
 
 def preencher_dados_fixos(ws, row, product, image_urls, cabecalho4, cabecalho5):
     print(f"INFO: Aplicando dados do formulário para o produto SKU {product.get('sku')}")

@@ -6,6 +6,7 @@ import time
 import uuid
 import traceback
 import base64
+import logging
 from celery import shared_task, group, chord
 from celery.result import AsyncResult
 from django.conf import settings
@@ -15,22 +16,37 @@ from pydantic.v1 import BaseModel
 import pandas as pd
 import asyncio
 from . import utils
-from collections import defaultdict 
+from collections import defaultdict
+
+# Configurar logging estruturado
+# Remover linha duplicada do logger original
+structured_logger = logging.getLogger('beecatalog.tasks') 
 
 
 logger = get_task_logger(__name__)
 
+def safe_update_state(task_instance, state, meta=None):
+    """Safely update task state, avoiding errors in eager mode"""
+    try:
+        if hasattr(task_instance, 'request') and task_instance.request and task_instance.request.id:
+            task_instance.update_state(state=state, meta=meta or {})
+        else:
+            # In eager mode, just log the progress
+            print(f"INFO: [Task Progress] {state}: {meta}")
+    except Exception as e:
+        print(f"WARNING: Could not update task state: {e}")
+
 @shared_task(bind=True)
 def scrape_images_task(self, url):
     try:
-        self.update_state(state='PROGRESS', meta={'step': 'Iniciando extração...'})
+        safe_update_state(self, 'PROGRESS', {'step': 'Iniciando extração...'})
         image_urls = utils.scrape_mercadolivre_images(url)
         print(f"INFO: [Scraper] Extraídas {len(image_urls)} imagens da URL: {url}")
         return {'status': 'SUCCESS', 'image_urls': image_urls}
     except Exception as e:
         print(f"ERRO na tarefa de scraping: {e}")
         traceback.print_exc()
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
+        safe_update_state(self, 'FAILURE', {'exc_type': type(e).__name__, 'exc_message': str(e)})
         raise
 
 # *** INÍCIO DA REFATORAÇÃO: Recebe product_data completo ***
@@ -142,7 +158,7 @@ def process_chunk_task(product_index, chunk_name, product_data, temp_file_path, 
 def assemble_spreadsheet_task(self, results_list, products_data, image_urls_map, temp_file_path):
     wb = None
     try:
-        self.update_state(state='PROGRESS', meta={'step': 'Montando planilha final...'})
+        safe_update_state(self, 'PROGRESS', {'step': 'Montando planilha final...'})
         print(f"INFO: [Finalizador] Iniciando montagem final para {len(products_data)} produtos.")
 
         wb = load_workbook(filename=temp_file_path, keep_vba=True)
@@ -242,7 +258,7 @@ def assemble_spreadsheet_task(self, results_list, products_data, image_urls_map,
         return {'status': 'SUCCESS', 'file_content': encoded_file, 'filename': final_filename}
     except Exception as e:
         traceback.print_exc()
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
+        safe_update_state(self, 'FAILURE', {'exc_type': type(e).__name__, 'exc_message': str(e)})
         raise
     finally:
         if wb:
@@ -260,7 +276,7 @@ def generate_spreadsheet_task(self, products_data, image_urls_map, template_path
         # Limpa o cache da IA para evitar problemas com preenchimento de campos
         utils.limpar_cache_ia()
         
-        self.update_state(state='PROGRESS', meta={'step': 'Preparando ambiente para tarefas...'})
+        safe_update_state(self, 'PROGRESS', {'step': 'Preparando ambiente para tarefas...'})
 
         temp_dir = os.path.join(settings.BASE_DIR, "temp_files")
         os.makedirs(temp_dir, exist_ok=True)
@@ -284,7 +300,7 @@ def generate_spreadsheet_task(self, products_data, image_urls_map, template_path
             current_task = 0
             
             for i, product in enumerate(products_data):
-                self.update_state(state='PROGRESS', meta={'step': f'Processando produto {i+1}/{len(products_data)}...'})
+                safe_update_state(self, 'PROGRESS', {'step': f'Processando produto {i+1}/{len(products_data)}...'})
                 
                 # Executa tarefas sequencialmente
                 current_task += 1
@@ -307,7 +323,7 @@ def generate_spreadsheet_task(self, products_data, image_urls_map, template_path
                         results_list.append(result)
             
             # Executa a tarefa final de montagem
-            self.update_state(state='PROGRESS', meta={'step': 'Montando planilha final...'})
+            safe_update_state(self, 'PROGRESS', {'step': 'Montando planilha final...'})
             final_result = assemble_spreadsheet_task(results_list, products_data, image_urls_map, assemble_temp_path)
             return final_result
         else:
@@ -344,7 +360,7 @@ def generate_spreadsheet_task(self, products_data, image_urls_map, template_path
 
     except Exception as e:
         traceback.print_exc()
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)})
+        safe_update_state(self, 'FAILURE', {'exc_type': type(e).__name__, 'exc_message': str(e)})
         raise
     finally:
         if wb:
@@ -368,14 +384,14 @@ def organizador_ia_task(self, csv_content_base64):
         total_products = len(products_to_process)
     except Exception as e:
         logger.error(f"Erro ao ler o arquivo CSV: {e}")
-        self.update_state(state='FAILURE', meta={'step': 'Erro de Leitura de CSV'})
+        safe_update_state(self, 'FAILURE', {'step': 'Erro de Leitura de CSV'})
         return {'status': 'FAILURE', 'result': 'CSV inválido ou mal formatado.'}
 
     ia_chain = utils.get_main_ia_chain()
     generated_products_data = []
 
     for i, product_info in enumerate(products_to_process):
-        self.update_state(state='PROGRESS', meta={'step': 'Gerando conteúdo', 'current': i + 1, 'total': total_products})
+        safe_update_state(self, 'PROGRESS', {'step': 'Gerando conteúdo', 'current': i + 1, 'total': total_products})
         
         # *** INÍCIO DA REFATORAÇÃO: Usa a nova função para formatar o contexto ***
         product_context = utils.format_product_context(product_info)
@@ -404,3 +420,303 @@ def organizador_ia_task(self, csv_content_base64):
             'products_data': generated_products_data
         }
     }
+
+# ===== TASKS OTIMIZADAS PARA PROCESSAMENTO EM LOTE =====
+
+@shared_task(bind=True)
+def batch_generate_main_content_task(self, products_data_list, batch_size=5):
+    """
+    Task otimizada para processamento em lote de conteúdo principal.
+    """
+    try:
+        start_time = time.time()
+        structured_logger.info("Iniciando processamento em lote de conteúdo principal", extra={
+            'task_id': self.request.id,
+            'products_count': len(products_data_list),
+            'batch_size': batch_size
+        })
+        
+        # Usar função otimizada de processamento em lote
+        results_map = utils.batch_process_main_content(products_data_list, batch_size)
+        
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
+        structured_logger.info("Processamento em lote de conteúdo principal concluído", extra={
+            'task_id': self.request.id,
+            'processing_time': processing_time,
+            'products_processed': len(results_map),
+            'avg_time_per_product': processing_time / len(results_map) if results_map else 0
+        })
+        
+        return {
+            'status': 'success',
+            'results': results_map,
+            'processing_time': processing_time,
+            'products_count': len(results_map)
+        }
+        
+    except Exception as e:
+        structured_logger.error("Erro no processamento em lote de conteúdo principal", extra={
+            'task_id': self.request.id,
+            'error': str(e),
+            'error_type': type(e).__name__
+        })
+        safe_update_state(self, 'FAILURE', {
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise
+
+@shared_task(bind=True)
+def batch_choose_options_task(self, products_data_list, temp_file_path, batch_size=3):
+    """
+    Task otimizada para processamento em lote de escolhas de opções.
+    """
+    try:
+        start_time = time.time()
+        structured_logger.info("Iniciando processamento em lote de escolhas de opções", extra={
+            'task_id': self.request.id,
+            'products_count': len(products_data_list),
+            'batch_size': batch_size
+        })
+        
+        # Usar função otimizada de processamento em lote
+        results_map = utils.batch_process_field_choices(products_data_list, temp_file_path, batch_size)
+        
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
+        structured_logger.info("Processamento em lote de escolhas concluído", extra={
+            'task_id': self.request.id,
+            'processing_time': processing_time,
+            'products_processed': len(results_map)
+        })
+        
+        return {
+            'status': 'success',
+            'results': results_map,
+            'processing_time': processing_time,
+            'products_count': len(results_map)
+        }
+        
+    except Exception as e:
+        structured_logger.error("Erro no processamento em lote de escolhas", extra={
+            'task_id': self.request.id,
+            'error': str(e),
+            'error_type': type(e).__name__
+        })
+        safe_update_state(self, 'FAILURE', {
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise
+
+@shared_task(bind=True)
+def batch_process_chunks_task(self, products_data_list, temp_file_path, campos_criticos_list, persona, batch_size=3):
+    """
+    Task otimizada para processamento em lote de chunks.
+    """
+    try:
+        start_time = time.time()
+        structured_logger.info("Iniciando processamento em lote de chunks", extra={
+            'task_id': self.request.id,
+            'products_count': len(products_data_list),
+            'batch_size': batch_size
+        })
+        
+        # Usar função otimizada de processamento em lote
+        results_map = utils.batch_process_chunks(
+            products_data_list, 
+            temp_file_path, 
+            campos_criticos_list, 
+            persona, 
+            batch_size
+        )
+        
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
+        structured_logger.info("Processamento em lote de chunks concluído", extra={
+            'task_id': self.request.id,
+            'processing_time': processing_time,
+            'chunks_processed': len(results_map)
+        })
+        
+        return {
+            'status': 'success',
+            'results': results_map,
+            'processing_time': processing_time,
+            'chunks_count': len(results_map)
+        }
+        
+    except Exception as e:
+        structured_logger.error("Erro no processamento em lote de chunks", extra={
+            'task_id': self.request.id,
+            'error': str(e),
+            'error_type': type(e).__name__
+        })
+        safe_update_state(self, 'FAILURE', {
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise
+
+@shared_task(bind=True)
+def optimized_generate_spreadsheet_task(self, products_data, image_urls_map, template_path, use_batch_processing=True):
+    """
+    Task principal otimizada que coordena todo o processamento usando lotes.
+    """
+    try:
+        start_time = time.time()
+        task_id = self.request.id
+        
+        structured_logger.info("Iniciando geração otimizada de planilha", extra={
+            'task_id': task_id,
+            'products_count': len(products_data),
+            'use_batch_processing': use_batch_processing
+        })
+        
+        # Atualizar progresso
+        safe_update_state(self, 'PROGRESS', {
+            'current': 10,
+            'total': 100,
+            'status': 'Preparando processamento em lote...'
+        })
+        
+        # Criar arquivo temporário
+        temp_file_path = os.path.join(settings.BASE_DIR, "uploads", f"temp_{task_id}.xlsm")
+        utils.copiar_template_para_temp(template_path, temp_file_path)
+        
+        if use_batch_processing and len(products_data) > 1:
+            # Usar processamento em lote otimizado
+            
+            # 1. Processamento em lote de conteúdo principal
+            safe_update_state(self, 'PROGRESS', {
+                'current': 20,
+                'total': 100,
+                'status': 'Processando conteúdo principal em lote...'
+            })
+            
+            main_content_results = utils.batch_process_main_content(products_data, batch_size=5)
+            
+            # 2. Processamento em lote de escolhas de opções
+            safe_update_state(self, 'PROGRESS', {
+                'current': 40,
+                'total': 100,
+                'status': 'Processando escolhas de campos em lote...'
+            })
+            
+            field_choices_results = utils.batch_process_field_choices(products_data, temp_file_path, batch_size=3)
+            
+            # 3. Processamento em lote de chunks
+            safe_update_state(self, 'PROGRESS', {
+                'current': 60,
+                'total': 100,
+                'status': 'Processando chunks em lote...'
+            })
+            
+            campos_criticos_list = list(utils.campos_criticos)
+            persona = "Você é um especialista em catalogação de produtos para Amazon."
+            
+            chunk_results = utils.batch_process_chunks(
+                products_data, 
+                temp_file_path, 
+                campos_criticos_list, 
+                persona, 
+                batch_size=3
+            )
+            
+            # 4. Montagem da planilha
+            safe_update_state(self, 'PROGRESS', {
+                'current': 80,
+                'total': 100,
+                'status': 'Montando planilha final...'
+            })
+            
+            # Combinar todos os resultados
+            combined_results = []
+            for i, product_data in enumerate(products_data):
+                result = {
+                    'type': 'combined',
+                    'product_index': i,
+                    'main_content': main_content_results.get(i, {}),
+                    'field_choices': field_choices_results.get(i, {}),
+                    'chunks': {chunk_name: chunk_results.get((i, chunk_name), {}) 
+                              for chunk_name in utils.mapear_chunks_da_planilha(
+                                  utils.load_workbook(temp_file_path)["Modelo"]
+                              ).keys()}
+                }
+                combined_results.append(result)
+            
+        else:
+            # Fallback para processamento individual (produtos únicos)
+            combined_results = []
+            for i, product_data in enumerate(products_data):
+                # Processar individualmente usando as funções originais
+                main_content = utils.get_main_ia_chain().invoke({
+                    "product_context": utils.format_product_context(product_data)
+                })
+                
+                result = {
+                    'type': 'individual',
+                    'product_index': i,
+                    'main_content': main_content.dict() if hasattr(main_content, 'dict') else main_content,
+                    'field_choices': {},
+                    'chunks': {}
+                }
+                combined_results.append(result)
+        
+        # Montar planilha final
+        final_file_path = utils.assemble_final_spreadsheet(
+            combined_results, 
+            products_data, 
+            image_urls_map, 
+            temp_file_path
+        )
+        
+        # Limpar arquivo temporário
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        
+        end_time = time.time()
+        total_processing_time = end_time - start_time
+        
+        structured_logger.info("Geração otimizada de planilha concluída", extra={
+            'task_id': task_id,
+            'total_processing_time': total_processing_time,
+            'products_count': len(products_data),
+            'avg_time_per_product': total_processing_time / len(products_data),
+            'use_batch_processing': use_batch_processing
+        })
+        
+        safe_update_state(self, 'PROGRESS', {
+            'current': 100,
+            'total': 100,
+            'status': 'Concluído!'
+        })
+        
+        return {
+            'status': 'success',
+            'file_path': final_file_path,
+            'processing_time': total_processing_time,
+            'products_count': len(products_data),
+            'optimization_used': use_batch_processing
+        }
+        
+    except Exception as e:
+        structured_logger.error("Erro na geração otimizada de planilha", extra={
+            'task_id': self.request.id,
+            'error': str(e),
+            'error_type': type(e).__name__
+        })
+        
+        # Limpar arquivo temporário em caso de erro
+        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        
+        safe_update_state(self, 'FAILURE', {
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise

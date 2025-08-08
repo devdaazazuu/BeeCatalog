@@ -1,0 +1,150 @@
+groups:
+  - name: beecatalog_performance
+    rules:
+      # Django request rate
+      - record: beecatalog:django_request_rate
+        expr: rate(django_http_requests_total[5m])
+        labels:
+          service: beecatalog
+
+      # Django request duration
+      - record: beecatalog:django_request_duration_p95
+        expr: histogram_quantile(0.95, rate(django_http_request_duration_seconds_bucket[5m]))
+        labels:
+          service: beecatalog
+
+      # Celery task rate
+      - record: beecatalog:celery_task_rate
+        expr: rate(celery_tasks_total[5m])
+        labels:
+          service: beecatalog
+
+      # Celery task duration
+      - record: beecatalog:celery_task_duration_p95
+        expr: histogram_quantile(0.95, rate(celery_task_duration_seconds_bucket[5m]))
+        labels:
+          service: beecatalog
+
+      # Database connection usage
+      - record: beecatalog:db_connections_usage
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100
+        labels:
+          service: beecatalog
+
+      # Redis memory usage
+      - record: beecatalog:redis_memory_usage_percent
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100
+        labels:
+          service: beecatalog
+
+  - name: beecatalog_alerts
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: rate(django_http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }} errors per second"
+
+      # High response time
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(django_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is {{ $value }} seconds"
+
+      # Database connection pool exhaustion
+      - alert: DatabaseConnectionPoolHigh
+        expr: beecatalog:db_connections_usage > 80
+        for: 2m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "Database connection pool usage is high"
+          description: "Connection pool usage is {{ $value }}%"
+
+      # Redis memory usage high
+      - alert: RedisMemoryHigh
+        expr: beecatalog:redis_memory_usage_percent > 90
+        for: 2m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis memory usage is {{ $value }}%"
+
+      # Celery queue backlog
+      - alert: CeleryQueueBacklog
+        expr: celery_queue_length > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "Celery queue has high backlog"
+          description: "Queue {{ $labels.queue }} has {{ $value }} pending tasks"
+
+      # Failed Celery tasks
+      - alert: HighCeleryFailureRate
+        expr: rate(celery_tasks_total{status="FAILURE"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "High Celery task failure rate"
+          description: "Celery failure rate is {{ $value }} failures per second"
+
+      # AI API rate limiting
+      - alert: AIAPIRateLimited
+        expr: rate(beecatalog_ai_requests_total{status="rate_limited"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: beecatalog
+        annotations:
+          summary: "AI API rate limiting detected"
+          description: "AI API requests are being rate limited"
+
+      # Low cache hit rate
+      - alert: LowCacheHitRate
+        expr: rate(beecatalog_cache_hits_total[5m]) / rate(beecatalog_cache_requests_total[5m]) < 0.7
+        for: 10m
+        labels:
+          severity: info
+          service: beecatalog
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}"
+
+      # Disk space low
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+          service: beecatalog
+        annotations:
+          summary: "Disk space is low"
+          description: "Disk space on {{ $labels.device }} is {{ $value }}% full"
+
+      # Service down
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: beecatalog
+        annotations:
+          summary: "Service is down"
+          description: "{{ $labels.job }} service is down"
