@@ -79,6 +79,11 @@ def check_redis():
     """
     print("\n🔍 Verificando Redis...")
     
+    # Pular verificação do Redis em modo DEBUG (usa cache local)
+    if settings.DEBUG:
+        print("✅ Redis: Pulando verificação (modo DEBUG - usando cache local)")
+        return True
+    
     try:
         import redis
         

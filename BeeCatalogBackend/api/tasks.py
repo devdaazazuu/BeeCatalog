@@ -17,6 +17,12 @@ import pandas as pd
 import asyncio
 from . import utils
 from collections import defaultdict
+from .memory_utils import (
+    get_cached_content_or_generate,
+    save_generated_content_to_memory,
+    check_product_in_memory,
+    extract_product_identifier
+)
 
 # Configurar logging estruturado
 # Remover linha duplicada do logger original
@@ -51,22 +57,78 @@ def scrape_images_task(self, url):
 
 # *** INÍCIO DA REFATORAÇÃO: Recebe product_data completo ***
 @shared_task
-def generate_main_content_task(product_index, product_data):
+def generate_main_content_task(product_index, product_data, force_regenerate=False):
     try:
         start_time = time.time()
         titulo_produto = product_data.get('titulo', f'Produto {product_index}')
+        identifier = extract_product_identifier(product_data)
+        
         print(f"INFO: [Sub-tarefa] Iniciando geração de conteúdo principal para produto {product_index} ('{titulo_produto[:30]}...')")
+        print(f"INFO: [Memória] Identificador do produto: {identifier}")
+        
+        # Verificar se o produto já existe na memória
+        if not force_regenerate:
+            exists, cached_data = check_product_in_memory(product_data)
+            if exists and cached_data:
+                generated_content = cached_data.get('generated_content', {})
+                if generated_content.get('titulo') or generated_content.get('descricao_produto'):
+                    print(f"INFO: [Memória] Reutilizando conteúdo principal da memória para produto {product_index}")
+                    end_time = time.time()
+                    print(f"--- [PROFILE][Sub-tarefa: Conteúdo Principal - Memória] Produto {product_index} levou: {end_time - start_time:.2f}s")
+                    return {'type': 'main_content', 'product_index': product_index, 'data': generated_content}
+        
+        # Gerar novo conteúdo
+        print(f"INFO: [Memória] Gerando novo conteúdo principal para produto {product_index}")
         
         # Formata o contexto completo do produto
         product_context = utils.format_product_context(product_data)
         
+        # Detecta a categoria do produto
+        categoria = utils.detectar_categoria_produto(product_context)
+        print(f"INFO: [IA] Categoria detectada para produto {product_index}: {categoria}")
+        
+        # Obtém instruções específicas da categoria
+        instrucoes_categoria = utils.get_prompt_especifico_categoria(categoria)
+        
+        # Gera palavras-chave inteligentes baseadas na categoria
+        palavras_chave_sugeridas = utils.gerar_palavras_chave_inteligentes(product_context, categoria)
+        palavras_chave_str = "; ".join(palavras_chave_sugeridas)
+        
         main_ia_chain = utils.get_main_ia_chain()
-        # Invoca a IA com o contexto completo
-        parsed_content = main_ia_chain.invoke({"product_context": product_context})
+        # Invoca a IA com o contexto completo e parâmetros aprimorados
+        parsed_content = main_ia_chain.invoke({
+            "product_context": product_context,
+            "categoria": categoria,
+            "instrucoes_categoria": instrucoes_categoria,
+            "palavras_chave_sugeridas": palavras_chave_str
+        })
+        
+        data_to_return = parsed_content.dict() if isinstance(parsed_content, BaseModel) else parsed_content
+        
+        # Validar qualidade do conteúdo gerado
+        validacao = utils.validar_qualidade_conteudo(data_to_return, categoria)
+        print(f"INFO: [Qualidade] Produto {product_index} - Score: {validacao['score']}/100 ({validacao['qualidade']})")
+        if validacao['feedback']:
+            print(f"INFO: [Qualidade] Feedback: {'; '.join(validacao['feedback'])}")
+        
+        # Adiciona informações de qualidade ao retorno
+        data_to_return['_qualidade_score'] = validacao['score']
+        data_to_return['_qualidade_nivel'] = validacao['qualidade']
+        data_to_return['_categoria_detectada'] = categoria
+        
+        # Salvar na memória
+        try:
+            save_generated_content_to_memory(
+                product_data=product_data,
+                generated_content=data_to_return,
+                force_update=force_regenerate
+            )
+            print(f"INFO: [Memória] Conteúdo principal salvo na memória para produto {product_index}")
+        except Exception as mem_error:
+            print(f"AVISO: [Memória] Erro ao salvar na memória: {mem_error}")
         
         end_time = time.time()
-        print(f"--- [PROFILE][Sub-tarefa: Conteúdo Principal] Produto {product_index} levou: {end_time - start_time:.2f}s")
-        data_to_return = parsed_content.dict() if isinstance(parsed_content, BaseModel) else parsed_content
+        print(f"--- [PROFILE][Sub-tarefa: Conteúdo Principal - Novo] Produto {product_index} levou: {end_time - start_time:.2f}s")
         return {'type': 'main_content', 'product_index': product_index, 'data': data_to_return}
     except Exception as e:
         print(f"ERRO na sub-tarefa de conteúdo principal para produto {product_index}: {e}")
@@ -206,6 +268,12 @@ def assemble_spreadsheet_task(self, results_list, products_data, image_urls_map,
                 # Correção: processar palavras-chave corretamente
                 palavras_chave_raw = main_content.get("palavras_chave", "")
                 if palavras_chave_raw:
+                    # Garantir que palavras_chave_raw seja uma string
+                    if isinstance(palavras_chave_raw, list):
+                        palavras_chave_raw = '; '.join(str(item) for item in palavras_chave_raw)
+                    elif not isinstance(palavras_chave_raw, str):
+                        palavras_chave_raw = str(palavras_chave_raw)
+                    
                     # Garantir que as palavras-chave estejam separadas por ponto e vírgula
                     # e tenham pelo menos 10 palavras-chave
                     palavras_lista = [p.strip() for p in palavras_chave_raw.replace(',', ';').split(';') if p.strip()]
@@ -424,20 +492,22 @@ def organizador_ia_task(self, csv_content_base64):
 # ===== TASKS OTIMIZADAS PARA PROCESSAMENTO EM LOTE =====
 
 @shared_task(bind=True)
-def batch_generate_main_content_task(self, products_data_list, batch_size=5):
+def batch_generate_main_content_task(self, products_data_list, batch_size=5, force_regenerate=False):
     """
     Task otimizada para processamento em lote de conteúdo principal.
+    Integrada com sistema de memória inteligente.
     """
     try:
         start_time = time.time()
         structured_logger.info("Iniciando processamento em lote de conteúdo principal", extra={
             'task_id': self.request.id,
             'products_count': len(products_data_list),
-            'batch_size': batch_size
+            'batch_size': batch_size,
+            'force_regenerate': force_regenerate
         })
         
-        # Usar função otimizada de processamento em lote
-        results_map = utils.batch_process_main_content(products_data_list, batch_size)
+        # Usar função otimizada de processamento em lote com memória inteligente
+        results_map = utils.batch_process_main_content(products_data_list, batch_size, force_regenerate)
         
         end_time = time.time()
         processing_time = end_time - start_time

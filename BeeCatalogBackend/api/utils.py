@@ -17,6 +17,15 @@ from typing import Dict, FrozenSet, List, NamedTuple, Optional, Tuple, Union
 # Importar sistema de cache inteligente
 from .cache_utils import ai_cache, get_or_cache_ai_response, batch_ai_requests
 
+# Importar sistema de memória inteligente de produtos
+from .memory_utils import (
+    get_cached_content_or_generate,
+    save_generated_content_to_memory,
+    check_product_in_memory,
+    batch_check_products_in_memory,
+    extract_product_identifier
+)
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -251,51 +260,160 @@ class AmazonListing(BaseModel):
     descricao_produto: str = Field(description="Descrição detalhada do produto, seguindo a estrutura com subtítulos e especificações técnicas.")
     palavras_chave: str = Field(description="String única contendo 10 a 15 palavras-chave relevantes, separadas por ponto e vírgula.")
 
+def detectar_categoria_produto(product_context: str) -> str:
+    """Detecta a categoria do produto baseada no contexto fornecido."""
+    context_lower = product_context.lower()
+    
+    # Categorias de produtos com palavras-chave específicas
+    categorias = {
+        'eletronicos': ['eletrônico', 'bateria', 'carregador', 'cabo', 'fone', 'smartphone', 'tablet', 'computador', 'tv', 'som'],
+        'casa_jardim': ['casa', 'jardim', 'decoração', 'móvel', 'cozinha', 'banheiro', 'quarto', 'sala', 'plantas', 'ferramentas'],
+        'roupas_acessorios': ['roupa', 'camisa', 'calça', 'vestido', 'sapato', 'bolsa', 'relógio', 'joia', 'óculos', 'chapéu'],
+        'saude_beleza': ['saúde', 'beleza', 'cosmético', 'perfume', 'shampoo', 'creme', 'maquiagem', 'suplemento', 'vitamina'],
+        'esportes': ['esporte', 'fitness', 'academia', 'corrida', 'futebol', 'tênis', 'bicicleta', 'natação', 'yoga'],
+        'brinquedos': ['brinquedo', 'criança', 'boneca', 'carrinho', 'jogo', 'puzzle', 'educativo', 'infantil'],
+        'automotivo': ['carro', 'auto', 'pneu', 'óleo', 'peça', 'acessório automotivo', 'motor', 'freio'],
+        'livros': ['livro', 'literatura', 'romance', 'ficção', 'biografia', 'história', 'ciência', 'educação'],
+        'pet': ['pet', 'cachorro', 'gato', 'ração', 'brinquedo para pet', 'coleira', 'cama para pet']
+    }
+    
+    for categoria, palavras_chave in categorias.items():
+        if any(palavra in context_lower for palavra in palavras_chave):
+            return categoria
+    
+    return 'geral'
+
+def gerar_palavras_chave_inteligentes(product_context: str, categoria: str) -> list:
+    """Gera palavras-chave específicas baseadas na categoria do produto."""
+    context_lower = product_context.lower()
+    
+    # Palavras-chave base por categoria
+    palavras_base = {
+        'eletronicos': ['eletrônicos', 'tecnologia', 'digital', 'portátil', 'wireless', 'bluetooth'],
+        'casa_jardim': ['casa', 'lar', 'decoração', 'organização', 'prático', 'funcional'],
+        'roupas_acessorios': ['moda', 'estilo', 'conforto', 'elegante', 'casual', 'moderno'],
+        'saude_beleza': ['cuidados', 'bem-estar', 'natural', 'hidratante', 'proteção', 'tratamento'],
+        'esportes': ['fitness', 'treino', 'performance', 'resistente', 'durável', 'atlético'],
+        'brinquedos': ['diversão', 'educativo', 'criativo', 'seguro', 'infantil', 'desenvolvimento'],
+        'automotivo': ['veículo', 'performance', 'segurança', 'manutenção', 'qualidade', 'resistente'],
+        'livros': ['conhecimento', 'aprendizado', 'cultura', 'educação', 'literatura', 'informação'],
+        'pet': ['animal', 'cuidado', 'conforto', 'saúde animal', 'bem-estar pet', 'qualidade'],
+        'geral': ['qualidade', 'prático', 'funcional', 'durável', 'útil', 'eficiente']
+    }
+    
+    return palavras_base.get(categoria, palavras_base['geral'])
+
+def get_prompt_especifico_categoria(categoria: str) -> str:
+    """Retorna instruções específicas baseadas na categoria do produto."""
+    prompts_categoria = {
+        'eletronicos': """
+        INSTRUÇÕES ESPECÍFICAS PARA ELETRÔNICOS:
+        - Enfatize especificações técnicas (voltagem, potência, conectividade)
+        - Mencione compatibilidade com dispositivos
+        - Destaque recursos de segurança e certificações
+        - Inclua informações sobre garantia quando relevante
+        """,
+        'casa_jardim': """
+        INSTRUÇÕES ESPECÍFICAS PARA CASA E JARDIM:
+        - Destaque praticidade e funcionalidade no dia a dia
+        - Mencione facilidade de instalação/uso
+        - Enfatize durabilidade e resistência
+        - Inclua informações sobre manutenção e limpeza
+        """,
+        'roupas_acessorios': """
+        INSTRUÇÕES ESPECÍFICAS PARA ROUPAS E ACESSÓRIOS:
+        - Destaque conforto e qualidade dos materiais
+        - Mencione versatilidade de uso
+        - Enfatize design e estilo
+        - Inclua informações sobre cuidados e lavagem
+        """,
+        'saude_beleza': """
+        INSTRUÇÕES ESPECÍFICAS PARA SAÚDE E BELEZA:
+        - Enfatize benefícios para a pele/cabelo/saúde
+        - Mencione ingredientes naturais quando aplicável
+        - Destaque facilidade de aplicação
+        - Inclua informações sobre resultados esperados
+        """,
+        'esportes': """
+        INSTRUÇÕES ESPECÍFICAS PARA ESPORTES:
+        - Destaque performance e resistência
+        - Mencione conforto durante atividades
+        - Enfatize durabilidade e qualidade dos materiais
+        - Inclua informações sobre modalidades de uso
+        """
+    }
+    
+    return prompts_categoria.get(categoria, "")
+
 @lru_cache(maxsize=None)
 def get_main_ia_chain():
     output_parser = JsonOutputParser(pydantic_object=AmazonListing)
     prompt_template = PromptTemplate(
-        input_variables=["product_context"],
+        input_variables=["product_context", "categoria", "instrucoes_categoria", "palavras_chave_sugeridas"],
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
         template="""
+        Você é um especialista em criação de listings para Amazon com foco em QUALIDADE e RELEVÂNCIA.
+        
+        CATEGORIA DETECTADA: {categoria}
+        {instrucoes_categoria}
+        
+        PALAVRAS-CHAVE SUGERIDAS PARA ESTA CATEGORIA: {palavras_chave_sugeridas}
+        
         Crie um listing de produto para a Amazon com base nas informações fornecidas, seguindo exatamente o modelo abaixo.
         Atenção: Todo o conteúdo deve respeitar as diretrizes da Amazon Seller Central, evitando: termos proibidos como "garantido", "perfeito", "melhor", "alta qualidade", "cura" ou qualquer promessa; uso de símbolos como travessão (–), barra (/) ou emojis; declarações absolutas ou subjetivas.
 
+        DIRETRIZES DE QUALIDADE APRIMORADAS:
+        1. ANÁLISE PROFUNDA: Analise cuidadosamente todas as informações do produto antes de criar o conteúdo
+        2. ESPECIFICIDADE: Use termos específicos e técnicos relevantes para a categoria
+        3. BENEFÍCIOS CLAROS: Destaque benefícios práticos e tangíveis para o usuário
+        4. DIFERENCIAÇÃO: Identifique e destaque características únicas do produto
+        5. CONTEXTO DE USO: Descreva situações específicas onde o produto é útil
+
         ESTRUTURA DO LISTING
 
-        TÍTULO
-        Deve conter entre 80 a 120 caracteres.
-        Não usar símbolos como travessão ou barra.
-        Incluir nome do produto e principais características técnicas ou dimensões.
+        TÍTULO (APRIMORADO)
+        - Deve conter entre 80 a 120 caracteres
+        - Não usar símbolos como travessão ou barra
+        - Incluir nome do produto + característica principal + benefício específico
+        - Usar termos de busca relevantes para a categoria
+        - Exemplo: "Organizador de Mala 6 Compartimentos Impermeável para Viagem Bagagem Organizada"
 
-        BULLET POINTS
-        Inserir 5 bullets, cada um com entre 80 a 120 caracteres.
-        Formato: primeiro termo em caixa alta seguido de dois pontos, depois a frase objetiva.
-        Exemplo: CONFORTO: superfície adaptável que ajuda a reduzir pontos de pressão.
+        BULLET POINTS (APRIMORADOS)
+        - Inserir 5 bullets, cada um com entre 80 a 120 caracteres
+        - Formato: TERMO EM CAIXA ALTA: frase objetiva com benefício específico
+        - Cada bullet deve abordar um aspecto diferente (funcionalidade, material, uso, manutenção, diferencial)
+        - Use dados técnicos quando disponíveis (dimensões, capacidade, materiais)
+        - Exemplo: ORGANIZAÇÃO INTELIGENTE: 6 compartimentos de tamanhos variados para separar roupas, sapatos e acessórios
 
-        DESCRIÇÃO DO PRODUTO
-        Comece com o nome do produto e um breve reforço do benefício principal.
-        Desenvolva 3 a 4 parágrafos curtos, cada um com um subtítulo, seguindo o padrão:
-        Subtítulo 1 (exemplo: Ajuste Personalizado ao Corpo)
-        Explique de forma clara como o produto entrega esse benefício.
-        Subtítulo 2 (exemplo: Indicação de Uso)
-        Descreva para quem o produto é indicado e situações de uso.
-        Subtítulo 3 (exemplo: Prático de Higienizar)
-        Explique sobre limpeza, manutenção e conservação.
-        Especificações Técnicas
-        Tipo: [tipo do produto]
-        Dimensões: [medidas em metros]
-        Peso máximo suportado: [exemplo: 130 kg]
-        Certificação (se houver): [exemplo: ANVISA nº...]
-        Outras informações técnicas relevantes em lista.
-        Finalize com uma frase de impacto que incentive a compra, reforçando o benefício principal.
-        Exemplo: Ideal para quem busca mais conforto e segurança no dia a dia.
+        DESCRIÇÃO DO PRODUTO (APRIMORADA)
+        - Comece com o nome do produto e seu principal benefício
+        - Desenvolva 3 a 4 parágrafos estruturados:
+        
+        Parágrafo 1 - Funcionalidade Principal
+        Explique detalhadamente como o produto funciona e seus principais recursos
+        
+        Parágrafo 2 - Benefícios Práticos
+        Descreva os benefícios específicos para o usuário no dia a dia
+        
+        Parágrafo 3 - Qualidade e Durabilidade
+        Destaque materiais, construção e aspectos de qualidade
+        
+        Especificações Técnicas (quando aplicável)
+        - Dimensões exatas
+        - Materiais utilizados
+        - Capacidade/peso suportado
+        - Certificações
+        - Compatibilidade
+        
+        Finalize com uma frase de impacto específica para a categoria
 
-        PALAVRAS-CHAVE
-        OBRIGATÓRIO: Inclua EXATAMENTE entre 10 a 15 palavras-chave relevantes, separadas por ponto e vírgula (;).
-        As palavras-chave devem ser específicas do produto e categoria.
-        Exemplo para organizador de mala: "Organizador de mala; Acessórios para viagem; Organizador de bagagem; Mala de viagem; Acessórios de viagem; Organizador portátil; Bagagem organizada; Viagem organizada; Acessórios práticos; Organizador funcional; Mala organizada; Viagem prática; Bagagem funcional; Organizador durável; Acessórios úteis"
-        NUNCA use vírgulas (,) como separador - use APENAS ponto e vírgula (;).
+        PALAVRAS-CHAVE (INTELIGENTES)
+        - OBRIGATÓRIO: Inclua EXATAMENTE entre 12 a 15 palavras-chave relevantes
+        - Use as palavras-chave sugeridas como base, mas adapte ao produto específico
+        - Inclua termos de busca populares da categoria
+        - Combine palavras-chave genéricas com específicas
+        - Separar APENAS por ponto e vírgula (;)
+        - Priorize termos que os clientes realmente pesquisam
 
         {format_instructions}
 
@@ -303,6 +421,8 @@ def get_main_ia_chain():
         ```
         {product_context}
         ```
+        
+        IMPORTANTE: Analise profundamente as informações do produto antes de gerar o conteúdo. Seja específico, relevante e focado na categoria {categoria}.
         """
     )
     return prompt_template | get_model(temperature=0.2) | output_parser
@@ -343,6 +463,139 @@ def limpar_cache_ia():
     global ia_cache
     ia_cache.clear()
     print("Cache da IA limpo com sucesso.")
+
+def validar_qualidade_conteudo(conteudo_gerado: dict, categoria: str) -> dict:
+    """Valida a qualidade do conteúdo gerado e retorna um score de qualidade."""
+    score = 0
+    feedback = []
+    max_score = 100
+    
+    # Validação do título (25 pontos)
+    titulo = conteudo_gerado.get('titulo', '')
+    if titulo:
+        if 80 <= len(titulo) <= 120:
+            score += 15
+        else:
+            feedback.append(f"Título com {len(titulo)} caracteres (ideal: 80-120)")
+        
+        # Verifica se contém termos específicos da categoria
+        if categoria != 'geral':
+            categorias_termos = {
+                'eletronicos': ['eletrônico', 'digital', 'tecnologia'],
+                'casa_jardim': ['casa', 'jardim', 'organização'],
+                'roupas_acessorios': ['moda', 'estilo', 'conforto'],
+                'saude_beleza': ['beleza', 'cuidado', 'bem-estar'],
+                'esportes': ['fitness', 'esporte', 'treino']
+            }
+            termos_categoria = categorias_termos.get(categoria, [])
+            if any(termo in titulo.lower() for termo in termos_categoria):
+                score += 10
+            else:
+                feedback.append("Título não contém termos específicos da categoria")
+    else:
+        feedback.append("Título ausente")
+    
+    # Validação dos bullet points (25 pontos)
+    bullet_points = conteudo_gerado.get('bullet_points', [])
+    if bullet_points and len(bullet_points) == 5:
+        score += 10
+        bullets_validos = 0
+        for bp in bullet_points:
+            bullet_text = bp.get('bullet_point', '') if isinstance(bp, dict) else str(bp)
+            if 80 <= len(bullet_text) <= 120 and ':' in bullet_text:
+                bullets_validos += 1
+        score += (bullets_validos / 5) * 15
+        if bullets_validos < 5:
+            feedback.append(f"Apenas {bullets_validos}/5 bullet points com formato correto")
+    else:
+        feedback.append(f"Número incorreto de bullet points: {len(bullet_points) if bullet_points else 0}")
+    
+    # Validação da descrição (25 pontos)
+    descricao = conteudo_gerado.get('descricao_produto', '')
+    if descricao:
+        if len(descricao) >= 200:
+            score += 15
+        else:
+            feedback.append(f"Descrição muito curta: {len(descricao)} caracteres")
+        
+        # Verifica estrutura (parágrafos)
+        paragrafos = descricao.split('\n\n')
+        if len(paragrafos) >= 3:
+            score += 10
+        else:
+            feedback.append("Descrição sem estrutura adequada de parágrafos")
+    else:
+        feedback.append("Descrição ausente")
+    
+    # Validação das palavras-chave (25 pontos)
+    palavras_chave = conteudo_gerado.get('palavras_chave', '')
+    if palavras_chave:
+        keywords_list = [kw.strip() for kw in palavras_chave.split(';') if kw.strip()]
+        if 12 <= len(keywords_list) <= 15:
+            score += 15
+        else:
+            feedback.append(f"Número de palavras-chave inadequado: {len(keywords_list)}")
+        
+        # Verifica se não há vírgulas (erro comum)
+        if ',' not in palavras_chave:
+            score += 10
+        else:
+            feedback.append("Palavras-chave contêm vírgulas (deve usar apenas ponto e vírgula)")
+    else:
+        feedback.append("Palavras-chave ausentes")
+    
+    return {
+        'score': min(score, max_score),
+        'qualidade': 'Excelente' if score >= 90 else 'Boa' if score >= 70 else 'Regular' if score >= 50 else 'Ruim',
+        'feedback': feedback
+    }
+
+def priorizar_campos_inteligente(product_data: dict, categoria: str) -> list:
+    """Prioriza campos para preenchimento baseado na categoria e dados disponíveis."""
+    # Campos essenciais sempre priorizados
+    campos_essenciais = [
+        'titulo', 'descricao_produto', 'bullet_points', 'palavras_chave',
+        'marca', 'modelo', 'cor_principal'
+    ]
+    
+    # Campos específicos por categoria
+    campos_categoria = {
+        'eletronicos': [
+            'voltagem', 'potencia', 'conectividade', 'compatibilidade',
+            'certificacao', 'garantia', 'tipo_bateria'
+        ],
+        'casa_jardim': [
+            'material_principal', 'dimensoes', 'peso_maximo_suportado',
+            'facilidade_instalacao', 'resistencia_agua', 'manutencao'
+        ],
+        'roupas_acessorios': [
+            'tamanho', 'material_tecido', 'tipo_fechamento', 'ocasiao_uso',
+            'cuidados_lavagem', 'estilo', 'genero'
+        ],
+        'saude_beleza': [
+            'ingredientes_principais', 'tipo_pele', 'beneficios',
+            'modo_uso', 'dermatologicamente_testado', 'natural_organico'
+        ],
+        'esportes': [
+            'modalidade_esportiva', 'nivel_usuario', 'material_resistente',
+            'tecnologia_performance', 'tamanho_peso', 'durabilidade'
+        ]
+    }
+    
+    # Combina campos essenciais com específicos da categoria
+    campos_priorizados = campos_essenciais.copy()
+    if categoria in campos_categoria:
+        campos_priorizados.extend(campos_categoria[categoria])
+    
+    # Adiciona campos que têm dados disponíveis no produto
+    campos_com_dados = []
+    for campo in product_data.keys():
+        if product_data[campo] and str(product_data[campo]).strip() and str(product_data[campo]).lower() != 'nan':
+            if campo not in campos_priorizados:
+                campos_com_dados.append(campo)
+    
+    # Retorna lista priorizada
+    return campos_priorizados + campos_com_dados[:10]  # Limita campos extras
 
 def detectar_codificacao(path: str) -> str:
     with open(path, "rb") as f: bruto = f.read(10_000)
@@ -504,10 +757,36 @@ def escolher_com_ia(product_data: dict, fields_to_fill: List[Dict], assumed_item
     
     return cached_result['choices'], cached_result['tokens']
 
-def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict, retriever_context_info: str, campos_criticos: set, persona_especialista: str):
+def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict, retriever_context_info: str, campos_criticos: set, persona_especialista: str, force_regenerate: bool = False):
     print(f"\nINFO: Processando o Chunk '{chunk_name}'...")
     
     titulo_produto = product_data.get("titulo", "produto")
+    
+    # Verificar se o produto já tem dados na memória para este chunk
+    if not force_regenerate:
+        try:
+            identifier = extract_product_identifier(product_data)
+            cached_data = check_product_in_memory(product_data)
+            
+            if cached_data[0] and cached_data[1]:
+                saved_content = cached_data[1].get('generated_content', {})
+                
+                # Verificar se há dados relevantes para este chunk
+                chunk_fields = [campo['cabecalho_l5'] for campo in chunk_data.get('campos', [])]
+                cached_chunk_data = {}
+                
+                for field in chunk_fields:
+                    if field in saved_content.get('outros_campos', {}):
+                        cached_chunk_data[field] = saved_content['outros_campos'][field]
+                
+                if cached_chunk_data:
+                    print(f"INFO: Reutilizando dados da memória para chunk '{chunk_name}' do produto {identifier}")
+                    return cached_chunk_data
+                else:
+                    print(f"INFO: Produto {identifier} encontrado na memória, mas sem dados para chunk '{chunk_name}'")
+        except Exception as e:
+            print(f"AVISO: Erro ao verificar memória para chunk '{chunk_name}': {e}")
+    
     product_context_str = format_product_context(product_data)
     full_context = f"DADOS COMPLETOS DO PRODUTO:\n{product_context_str}\n\nINFORMAÇÕES ADICIONAIS DA BASE DE CONHECIMENTO:\n{retriever_context_info}"
 
@@ -633,6 +912,40 @@ def processar_chunk_com_ia(chunk_name: str, chunk_data: dict, product_data: dict
         if not ai_choices:
             print(f"AVISO: Nenhum resultado válido da IA para o chunk '{chunk_name}'.")
             return {}
+        
+        # Salvar resultados do chunk na memória
+        try:
+            identifier = extract_product_identifier(product_data)
+            existing_data = check_product_in_memory(product_data)
+            
+            if existing_data[0] and existing_data[1]:
+                # Atualizar dados existentes
+                saved_content = existing_data[1].get('generated_content', {})
+                if 'outros_campos' not in saved_content:
+                    saved_content['outros_campos'] = {}
+                
+                # Adicionar novos campos do chunk
+                saved_content['outros_campos'].update(ai_choices)
+                
+                # Salvar dados atualizados
+                save_generated_content_to_memory(
+                    product_data=product_data,
+                    generated_content=saved_content,
+                    force_update=True
+                )
+                print(f"INFO: Dados do chunk '{chunk_name}' salvos na memória para produto {identifier}")
+            else:
+                # Criar nova entrada na memória
+                new_content = {'outros_campos': ai_choices}
+                save_generated_content_to_memory(
+                    product_data=product_data,
+                    generated_content=new_content,
+                    force_update=False
+                )
+                print(f"INFO: Nova entrada na memória criada para produto {identifier} com dados do chunk '{chunk_name}'")
+        except Exception as e:
+            print(f"AVISO: Erro ao salvar chunk '{chunk_name}' na memória: {e}")
+        
         return ai_choices
 
     except json.JSONDecodeError:
@@ -967,22 +1280,56 @@ def set_cell_value(ws, row, header_map, header_name, value):
 
 # ===== FUNÇÕES OTIMIZADAS PARA PROCESSAMENTO EM LOTE =====
 
-def batch_process_main_content(products_data: list, batch_size: int = 5) -> dict:
+def batch_process_main_content(products_data: list, batch_size: int = 5, force_regenerate: bool = False) -> dict:
     """
     Processa múltiplos produtos em lote para geração de conteúdo principal.
+    Integrado com sistema de memória inteligente para reutilização de conteúdo.
     
     Args:
         products_data: Lista de dados dos produtos
         batch_size: Tamanho do lote para processamento
+        force_regenerate: Se True, força regeneração mesmo se existir na memória
     
     Returns:
         Dicionário mapeando índice do produto para o conteúdo gerado
     """
     print(f"INFO: Iniciando processamento em lote de {len(products_data)} produtos (lotes de {batch_size})")
+    print(f"INFO: Modo regeneração forçada: {'Ativado' if force_regenerate else 'Desativado'}")
     
-    # Preparar requisições para processamento em lote
-    requests = []
+    # Verificar quais produtos já existem na memória
+    if not force_regenerate:
+        print("INFO: Verificando produtos existentes na memória...")
+        cached_products = batch_check_products_in_memory(products_data)
+        print(f"INFO: Encontrados {len(cached_products)} produtos na memória")
+    else:
+        cached_products = {}
+    
+    # Separar produtos que precisam ser processados
+    products_to_process = []
+    results_map = {}
+    
     for i, product_data in enumerate(products_data):
+        identifier = extract_product_identifier(product_data)
+        
+        if not force_regenerate and identifier in cached_products:
+            # Usar conteúdo da memória
+            cached_data = cached_products[identifier]
+            generated_content = cached_data.get('generated_content', {})
+            results_map[i] = generated_content
+            print(f"INFO: Produto {i} ({identifier}) reutilizado da memória")
+        else:
+            # Adicionar à lista para processamento
+            products_to_process.append((i, product_data))
+    
+    if not products_to_process:
+        print("INFO: Todos os produtos foram encontrados na memória. Nenhum processamento necessário.")
+        return results_map
+    
+    print(f"INFO: {len(products_to_process)} produtos precisam ser processados")
+    
+    # Preparar requisições para produtos que precisam ser processados
+    requests = []
+    for i, product_data in products_to_process:
         product_context = format_product_context(product_data)
         prompt = f"Gerar conteúdo principal para: {product_context}"
         
@@ -1012,15 +1359,31 @@ def batch_process_main_content(products_data: list, batch_size: int = 5) -> dict
         
         return results
     
-    # Executar processamento em lote
-    batch_results = batch_ai_requests(requests, batch_ai_function, batch_size)
-    
-    # Organizar resultados por índice do produto
-    results_map = {}
-    for i, result in enumerate(batch_results):
-        results_map[i] = result if result is not None else {}
+    # Executar processamento em lote apenas para produtos necessários
+    if requests:
+        batch_results = batch_ai_requests(requests, batch_ai_function, batch_size)
+        
+        # Organizar resultados e salvar na memória
+        for idx, (original_index, product_data) in enumerate(products_to_process):
+            if idx < len(batch_results):
+                generated_content = batch_results[idx] if batch_results[idx] is not None else {}
+                results_map[original_index] = generated_content
+                
+                # Salvar na memória para reutilização futura
+                try:
+                    save_generated_content_to_memory(
+                        product_data=product_data,
+                        generated_content=generated_content,
+                        force_update=force_regenerate
+                    )
+                except Exception as e:
+                    print(f"AVISO: Erro ao salvar produto na memória: {e}")
+            else:
+                results_map[original_index] = {}
     
     print(f"INFO: Processamento em lote concluído. {len(results_map)} produtos processados.")
+    print(f"INFO: {len([k for k in results_map.keys() if k in [i for i, _ in products_to_process]])} novos produtos gerados")
+    print(f"INFO: {len(cached_products)} produtos reutilizados da memória")
     return results_map
 
 def batch_process_field_choices(products_data: list, temp_file_path: str, batch_size: int = 3) -> dict:

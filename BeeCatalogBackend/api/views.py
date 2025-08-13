@@ -251,14 +251,27 @@ class TaskStatusView(APIView):
             raise e
 
 class ClearIACacheView(APIView):
-    """Endpoint para limpar o cache da IA manualmente."""
+    """Endpoint para limpar o cache da IA manualmente e aplicar melhorias."""
     
     def post(self, request, *args, **kwargs):
         try:
             utils.limpar_cache_ia()
+            
+            # Limpa também o cache do LRU das funções
+            utils.get_main_ia_chain.cache_clear()
+            utils.get_vectorstore.cache_clear()
+            
             return Response({
                 'status': 'SUCCESS',
-                'message': 'Cache da IA limpo com sucesso.'
+                'message': 'Cache da IA limpo com sucesso. Melhorias aplicadas.',
+                'melhorias_ativas': {
+                    'deteccao_categoria': True,
+                    'prompts_especificos': True,
+                    'palavras_chave_inteligentes': True,
+                    'validacao_qualidade': True,
+                    'priorizacao_campos': True
+                },
+                'instrucoes': 'Agora as planilhas serão geradas com melhor qualidade e campos mais relevantes baseados na categoria do produto.'
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({

@@ -1,0 +1,31 @@
+{
+  "product_identifier": "sku_TEST_SKU_456",
+  "original_data": {
+    "sku": "TEST_SKU_456",
+    "title": "Produto Utils Teste",
+    "brand": "TestBrand"
+  },
+  "generated_content": {
+    "titulo": "Título Gerado pela IA",
+    "descricao_produto": "Descrição gerada pela IA",
+    "bullet_points": [],
+    "palavras_chave": [
+      "teste",
+      "produto",
+      "ia"
+    ],
+    "categoria": null,
+    "subcategoria": null,
+    "marca": null,
+    "modelo": null,
+    "cor": null,
+    "tamanho": null,
+    "material": null,
+    "peso": null,
+    "dimensoes": null,
+    "outros_campos": {}
+  },
+  "created_at": "2025-08-08T16:02:30.565395",
+  "updated_at": "2025-08-08T16:02:30.565404",
+  "version": "1.0"
+}

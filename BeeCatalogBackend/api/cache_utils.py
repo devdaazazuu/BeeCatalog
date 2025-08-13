@@ -20,13 +20,15 @@ class AICache:
         self.cache_prefix = 'ai_response'
         self.default_timeout = 2592000  # 30 dias
         
-        # Conectar diretamente ao Redis para operações avançadas
-        try:
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
-            self.redis_client = redis.from_url(redis_url)
-        except Exception as e:
-            logger.warning(f"Não foi possível conectar ao Redis: {e}")
-            self.redis_client = None
+        # Conectar diretamente ao Redis para operações avançadas apenas em produção
+        self.redis_client = None
+        if not settings.DEBUG:
+            try:
+                redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+                self.redis_client = redis.from_url(redis_url)
+            except Exception as e:
+                logger.warning(f"Não foi possível conectar ao Redis: {e}")
+                self.redis_client = None
     
     def _generate_cache_key(self, prompt: str, context: Union[str, Dict, list]) -> str:
         """

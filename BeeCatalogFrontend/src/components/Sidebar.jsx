@@ -111,9 +111,12 @@ const Sidebar = () => {
               <span className="text-xs font-medium text-slate-400">v1.0.0</span>
             </div>
             <div className="flex space-x-1">
-              <button className="p-2 hover:text-amber-400 hover:bg-slate-800/50 rounded-lg transition-all duration-300 group">
+              <NavLink 
+                to="/configuracoes"
+                className="p-2 hover:text-amber-400 hover:bg-slate-800/50 rounded-lg transition-all duration-300 group"
+              >
                 <Settings size={14} className="group-hover:rotate-90 transition-transform duration-300" />
-              </button>
+              </NavLink>
               <button className="p-2 hover:text-amber-400 hover:bg-slate-800/50 rounded-lg transition-all duration-300 group">
                 <HelpCircle size={14} className="group-hover:scale-110 transition-transform duration-300" />
               </button>

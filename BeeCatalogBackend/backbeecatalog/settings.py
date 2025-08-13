@@ -79,7 +79,7 @@ if DATABASE_URL:
     DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql'
 else:
     # Development - usar SQLite por padrão, PostgreSQL se configurado
-    if os.getenv('DB_NAME') and os.getenv('DB_NAME') != 'beecatalog_dev':
+    if os.getenv('DB_NAME'):
         # PostgreSQL configurado
         DATABASES = {
             'default': {
